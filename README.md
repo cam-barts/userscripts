@@ -87,7 +87,7 @@ Replace `your-script` or `your-style` with the actual filename.
 | [Jira: show customfield IDs on hover](scripts/Jira%20show%20customfield%20IDs%20on%20hover.user.js) | Hover a field label on a Jira issue to see its customfield_xxx ID | Jira (Atlassian) | 0.1 |
 | [GitHub Commit Labels](scripts/GitHub%20Commit%20Labels.user.js) | Enhances GitHub commits with beautiful labels for conventional commit types (feat, fix, docs, etc.) | GitHub | 1.6.2 |
 | [Confluence Menu Base](scripts/Confluence%20Menu%20Base.user.js) | Add command menu to Confluence pages (required for other Confluence scripts) | Confluence | 0.4 |
-| [Confluence Menu: Reading Score](scripts/Confluence%20Menu%20Reading%20Score.user.js) | Add readability metrics to Confluence pages | Confluence | 0.1 |
+| [Confluence Menu: Reading Score](scripts/Confluence%20Menu%20Reading%20Score.user.js) | Analyzes page readability with multiple metrics (ARI, Coleman-Liau, Flesch, SMOG). Features hemingwayapp.com-inspired sentence highlighting to identify complex sentences with interactive tooltips showing detailed readability scores. | Confluence | 0.1 |
 | [Confluence Menu: Add Count Words](scripts/Confluence%20Menu%20Add%20Count%20Words.user.js) | Count words on Confluence pages | Confluence | 0.2 |
 | [Jira: Issue-Age Dynamic Highlighter](scripts/Jira%20Age%20Dynamic%20Highlighter.user.js) | Color-code Jira issue rows from green (new) to red (old) by table's oldest issue age | Jira (Atlassian) | 0.1 |
 

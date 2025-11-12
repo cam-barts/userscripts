@@ -43,13 +43,13 @@ jobs:
           echo "Modified files:"
           echo "$MODIFIED_FILES"
 
-          # Process each modified file
-          for FILE in $MODIFIED_FILES; do
+          # Process each modified file (using while loop to handle filenames with spaces)
+          while IFS= read -r FILE; do
             if [ -f "$FILE" ]; then
               echo "Processing $FILE..."
               bash .github/scripts/increment-version.sh "$FILE"
             fi
-          done
+          done <<< "$MODIFIED_FILES"
 
       - name: Check for version changes
         id: check_changes
