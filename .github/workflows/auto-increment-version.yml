@@ -1,0 +1,68 @@
+name: Auto-Increment Script Versions
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/**/*.user.js'
+      - 'styles/**/*.user.css'
+
+jobs:
+  increment-versions:
+    # Skip if commit message contains [skip-version] or was made by github-actions
+    if: "!contains(github.event.head_commit.message, '[skip-version]') && github.event.head_commit.author.name != 'github-actions[bot]'"
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # Need at least 2 commits to compare
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Find modified scripts and increment versions
+        run: |
+          # Get list of modified .user.js and .user.css files
+          MODIFIED_FILES=$(git diff --name-only HEAD~1 HEAD | grep -E '\.(user\.js|user\.css)$' || true)
+
+          if [ -z "$MODIFIED_FILES" ]; then
+            echo "No user scripts or styles modified"
+            exit 0
+          fi
+
+          echo "Modified files:"
+          echo "$MODIFIED_FILES"
+
+          # Process each modified file
+          for FILE in $MODIFIED_FILES; do
+            if [ -f "$FILE" ]; then
+              echo "Processing $FILE..."
+              bash .github/scripts/increment-version.sh "$FILE"
+            fi
+          done
+
+      - name: Check for version changes
+        id: check_changes
+        run: |
+          if git diff --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit and push version updates
+        if: steps.check_changes.outputs.has_changes == 'true'
+        run: |
+          git add scripts/ styles/ README.md
+          git commit -m "chore: auto-increment versions [skip-version]"
+          git push
