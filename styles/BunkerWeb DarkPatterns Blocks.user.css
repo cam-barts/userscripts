@@ -1,0 +1,39 @@
+/*
+==UserCSS==
+@name             BunkerWeb DarkPatterns Blocks
+@author           cam-barts
+@match            https://bunkerweb.coder.cam/*
+@version          1.0
+@updateURL        https://raw.githubusercontent.com/cam-barts/userscripts/main/styles/BunkerWeb%20DarkPatterns%20Blocks.user.css
+@downloadURL      https://raw.githubusercontent.com/cam-barts/userscripts/main/styles/BunkerWeb%20DarkPatterns%20Blocks.user.css
+==/UserCSS==
+*/
+
+/* Remove the green marquis banner in news section */
+div.bg-bw-green:nth-child(2) {
+  display: none !important;
+}
+
+/* Remove the buy now button */
+.buy-now {
+  display: none !important;
+}
+
+/* Remove the newsletter signup from notifications area */
+.newsletter-signup {
+  display: none !important;
+}
+
+/*  Remove All Pro Menu Items */
+li.menu-item[data-bs-html="true"] {
+  display: none !important;
+}
+
+li.list-group-item[data-type="pro"] {
+  display: none !important;
+}
+
+/* Remove the "Pro" menu item itself */
+li.menu-item > a.menu-link[href="/pro"] {
+  display: none !important;
+}
