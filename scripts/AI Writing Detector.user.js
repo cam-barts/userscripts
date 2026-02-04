@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         AI Writing Detector
-// @version      0.1
+// @version      0.2
 // @description  Highlights signs of AI-generated writing based on Wikipedia's Signs of AI writing
 // @author       cam-barts
 // @match        *://*/*
