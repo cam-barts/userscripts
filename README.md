@@ -90,6 +90,7 @@ Replace `your-script` or `your-style` with the actual filename.
 | [Confluence Menu: Reading Score](scripts/Confluence%20Menu%20Reading%20Score.user.js) | Analyzes page readability with multiple metrics (ARI, Coleman-Liau, Flesch, SMOG). Features hemingwayapp.com-inspired sentence highlighting to identify complex sentences with interactive tooltips showing detailed readability scores. | Confluence | 0.1 |
 | [Confluence Menu: Add Count Words](scripts/Confluence%20Menu%20Add%20Count%20Words.user.js) | Count words on Confluence pages | Confluence | 0.2 |
 | [Jira: Issue-Age Dynamic Highlighter](scripts/Jira%20Age%20Dynamic%20Highlighter.user.js) | Color-code Jira issue rows from green (new) to red (old) by table's oldest issue age | Jira (Atlassian) | 0.1 |
+| [AI Writing Detector](scripts/AI%20Writing%20Detector.user.js) | Highlights signs of AI-generated writing (vocabulary, style, chatbot artifacts) based on Wikipedia's Signs of AI writing | All sites | 0.1 |
 
 ## Styles
 
