@@ -91,6 +91,7 @@ Replace `your-script` or `your-style` with the actual filename.
 | [Confluence Menu: Add Count Words](scripts/Confluence%20Menu%20Add%20Count%20Words.user.js) | Count words on Confluence pages | Confluence | 0.2 |
 | [Jira: Issue-Age Dynamic Highlighter](scripts/Jira%20Age%20Dynamic%20Highlighter.user.js) | Color-code Jira issue rows from green (new) to red (old) by table's oldest issue age | Jira (Atlassian) | 0.1 |
 | [AI Writing Detector](scripts/AI%20Writing%20Detector.user.js) | Highlights signs of AI-generated writing (vocabulary, style, chatbot artifacts) based on Wikipedia's Signs of AI writing | All sites | 0.1 |
+| [Table to CSV](scripts/Table%20to%20CSV.user.js) | Detect tables on any page, select one, and download it as a CSV file | All sites | 0.1 |
 
 ## Styles
 
