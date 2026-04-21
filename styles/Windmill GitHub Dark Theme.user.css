@@ -1,0 +1,179 @@
+/* ==UserStyle==
+@name Windmill GitHub Dark
+@author: cam-barts
+@namespace windmill-github-dark
+@description GitHub Dark theme for Windmill
+@version 1.0
+@match https://.windmill.dev/
+@match https://app.windmill.dev/*
+@match https://windmill.shadeking.cam/*
+@updateURL        https://raw.githubusercontent.com/cam-barts/userscripts/main/styles/Windmill%20GitHub%20Dark%20Theme.user.css
+@downloadURL      https://raw.githubusercontent.com/cam-barts/userscripts/main/styles/Windmill%20GitHub%20Dark%20Theme.user.css
+==/UserStyle==
+*/
+
+/* ── CSS custom property overrides ─────────────────────────────── */
+html.dark {
+--color-surface-primary: 13 17 23 !important;
+--color-surface-secondary: 22 27 34 !important;
+--color-surface-tertiary: 33 38 45 !important;
+--color-surface-sunken: 1 4 9 !important;
+--color-surface-input: 33 38 45 !important;
+--color-surface-hover: 48 54 61/.25 !important;
+--color-surface-selected: 33 38 45 !important;
+--color-surface-disabled: 33 38 45 !important;
+--color-surface-accent-primary: 31 111 201 !important;
+--color-surface-accent-hover: 56 132 214 !important;
+--color-surface-accent-clicked: 21 91 171 !important;
+--color-surface-accent-selected: 23 47 83 !important;
+--color-surface-accent-secondary: 88 166 255 !important;
+--color-surface-accent-secondary-hover: 68 146 235 !important;
+--color-surface-accent-secondary-clicked: 48 126 215 !important;
+--color-text-primary: 230 237 243 !important;
+--color-text-secondary: 125 133 144 !important;
+--color-text-tertiary: 110 118 129 !important;
+--color-text-emphasis: 246 248 250 !important;
+--color-text-hint: 110 118 129 !important;
+--color-text-disabled: 72 79 88 !important;
+--color-text-accent: 88 166 255 !important;
+--color-border-light: 33 38 45 !important;
+--color-border-normal: 48 54 61 !important;
+--color-border-accent: 88 166 255 !important;
+--color-border-selected: 188 140 62 !important;
+--color-reserved-ai: 163 113 247 !important;
+--color-component-virtual-node: 43 48 55 !important;
+--color-component-button-accent-secondary: 230 237 243 !important;
+
+--color-surface-primary-inverse: 13 17 23 !important;
+--color-surface-secondary-inverse: 22 27 34 !important;
+--color-surface-tertiary-inverse: 33 38 45 !important;
+--color-surface-sunken-inverse: 1 4 9 !important;
+--color-surface-input-inverse: 33 38 45 !important;
+--color-surface-hover-inverse: 48 54 61/.25 !important;
+--color-surface-selected-inverse: 33 38 45 !important;
+--color-surface-disabled-inverse: 33 38 45 !important;
+--color-surface-accent-primary-inverse: 31 111 201 !important;
+--color-surface-accent-hover-inverse: 56 132 214 !important;
+--color-surface-accent-clicked-inverse: 21 91 171 !important;
+--color-surface-accent-selected-inverse: 23 47 83 !important;
+--color-surface-accent-secondary-inverse: 88 166 255 !important;
+--color-surface-accent-secondary-hover-inverse: 68 146 235 !important;
+--color-surface-accent-secondary-clicked-inverse: 48 126 215 !important;
+--color-text-primary-inverse: 230 237 243 !important;
+--color-text-secondary-inverse: 125 133 144 !important;
+--color-text-tertiary-inverse: 110 118 129 !important;
+--color-text-emphasis-inverse: 246 248 250 !important;
+--color-text-hint-inverse: 110 118 129 !important;
+--color-text-disabled-inverse: 72 79 88 !important;
+--color-text-accent-inverse: 88 166 255 !important;
+--color-border-light-inverse: 33 38 45 !important;
+--color-border-normal-inverse: 48 54 61 !important;
+--color-border-accent-inverse: 88 166 255 !important;
+--color-border-selected-inverse: 188 140 62 !important;
+--color-reserved-ai-inverse: 163 113 247 !important;
+--color-component-virtual-node-inverse: 43 48 55 !important;
+--color-component-button-accent-secondary-inverse: 230 237 243 !important;
+
+/* Hard-coded background-color and color on html.dark */
+background-color: #0d1117 !important;
+color: #e6edf3 !important;
+
+/* Monaco/VSCode editor variables */
+--vscode-editorSuggestWidget-background: #161b22 !important;
+--vscode-editorHoverWidget-foreground: #e6edf3 !important;
+--vscode-editorHoverWidget-border: #30363d !important;
+--vscode-editorHoverWidget-statusBarBackground: #21262d !important;
+}
+
+/* ── Splitpanes hard-coded background ──────────────────────────── */
+.dark .splitpanes__pane,
+html.dark .splitpanes__pane {
+background-color: #0d1117 !important;
+}
+
+/* ── Sidebar inline style overrides ────────────────────────────── /
+[style="background-color:#1e232e"],
+[style*="background-color: #1e232e"],
+[style*="background-color: rgb(30, 35, 46)"] {
+background-color: #010409 !important;
+}
+[style*="background-color:#2e3441"],
+[style*="background-color: #2e3441"],
+[style*="background-color: rgb(46, 52, 65)"] {
+background-color: #0d1117 !important;
+}
+
+/* ── Tailwind dark:bg-gray-* overrides ─────────────────────────── */
+.dark:bg-gray-700:is(.dark *),
+.dark:bg-gray-800:is(.dark *),
+.dark:bg-gray-900:is(.dark *) {
+background-color: rgb(22 27 34) !important;
+}
+.dark:bg-gray-700:hover:is(.dark *),
+.dark:bg-gray-800:hover:is(.dark *) {
+background-color: rgb(33 38 45) !important;
+}
+.dark:text-gray-100:is(.dark *),
+.dark:text-gray-200:is(.dark *),
+.dark:text-gray-300:is(.dark *) {
+color: rgb(230 237 243) !important;
+}
+.dark:text-gray-400:is(.dark *),
+.dark:text-gray-500:is(.dark *) {
+color: rgb(125 133 144) !important;
+}
+.dark:border-gray-600:is(.dark *),
+.dark:border-gray-700:is(.dark *) {
+border-color: rgb(33 38 45) !important;
+}
+
+/* ── Nord utility class overrides ──────────────────────────────── */
+html.dark .bg-nord-950,
+html.dark .bg-nord-900,
+html.dark .bg-nord-600,
+html.dark .bg-nord-0,
+.bg-nord-950:is(.dark *),
+.bg-nord-900:is(.dark *),
+.bg-nord-600:is(.dark *) {
+background-color: rgb(33 38 45) !important;
+}
+html.dark .border-nord-900,
+.border-nord-900:is(.dark *) {
+border-color: rgb(48 54 61) !important;
+}
+html.dark .text-nord-800 {
+color: rgb(125 133 144) !important;
+}
+
+/* ── Frost / Marine overrides ──────────────────────────────────── /
+html.dark [class="bg-frost-"] {
+background-color: rgb(23 47 83) !important;
+}
+html.dark [class*="bg-marine-"] {
+background-color: rgb(31 111 201) !important;
+}
+html.dark [class*="border-marine-"] {
+border-color: rgb(88 166 255) !important;
+}
+
+/* ── Scrollbar (Chromium) ──────────────────────────────────────── */
+html.dark ::-webkit-scrollbar {
+width: 10px;
+height: 10px;
+}
+html.dark ::-webkit-scrollbar-track {
+background: #010409;
+}
+html.dark ::-webkit-scrollbar-thumb {
+background: #30363d;
+border-radius: 5px;
+}
+html.dark ::-webkit-scrollbar-thumb:hover {
+background: #6e7681;
+}
+
+/* ── Selection ─────────────────────────────────────────────────── */
+html.dark ::selection {
+background: rgba(31, 111, 201, 0.35);
+color: #f6f8fa;
+}
