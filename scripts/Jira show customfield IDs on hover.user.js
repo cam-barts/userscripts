@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Jira: show customfield IDs on hover
-// @version      0.5
+// @version      0.6
 // @description  Hover a field label on a Jira issue to see its customfield_xxx ID.
 // @author       cam-barts
 // @match        https://*.atlassian.net/browse/*
@@ -97,7 +97,7 @@
     const meta = {
       id: 'jira-customfield-ids',
       name: 'Jira: show customfield IDs on hover',
-      version: '0.5',
+      version: '0.6',
       updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Jira%20show%20customfield%20IDs%20on%20hover.user.js',
       downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Jira%20show%20customfield%20IDs%20on%20hover.user.js',
       description: 'Hover a field label on a Jira issue to see its customfield_xxx ID',

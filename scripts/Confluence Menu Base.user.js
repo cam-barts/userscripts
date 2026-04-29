@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Confluence Menu Base
-// @version      0.9
+// @version      0.10
 // @description  Add command menu to Confluence pages
 // @author       cam-barts
 // @match        *://*/wiki/*
@@ -180,7 +180,7 @@
   _hubDeclareScript({
     id: 'confluence-menu-base',
     name: 'Confluence Menu Base',
-    version: '0.9',
+    version: '0.10',
     updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Base.user.js',
     downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Base.user.js',
     description: 'Add command menu to Confluence pages',

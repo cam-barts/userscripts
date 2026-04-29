@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Table to CSV
-// @version      0.6
+// @version      0.7
 // @description  Detect tables on any page, let the user select one, and download it as CSV
 // @author       cam-barts
 // @match        *://*/*
@@ -330,7 +330,7 @@
 		const scriptMeta = {
 			id: 'table-to-csv',
 			name: 'Table to CSV',
-			version: '0.6',
+			version: '0.7',
 			updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Table%20to%20CSV.user.js',
 			downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Table%20to%20CSV.user.js',
 			description: 'Detect tables on any page and download as CSV',

@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         AI Writing Detector
-// @version      0.7
+// @version      0.8
 // @description  Highlights signs of AI-generated writing based on Wikipedia's Signs of AI writing
 // @author       cam-barts
 // @match        *://*/*
@@ -654,7 +654,7 @@
 		const scriptMeta = {
 			id: 'ai-writing-detector',
 			name: 'AI Writing Detector',
-			version: '0.7',
+			version: '0.8',
 			updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/AI%20Writing%20Detector.user.js',
 			downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/AI%20Writing%20Detector.user.js',
 			description: 'Highlights signs of AI-generated writing',

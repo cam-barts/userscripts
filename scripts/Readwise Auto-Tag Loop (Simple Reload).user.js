@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Readwise Auto-Tag Loop (Simple Reload)
 // @namespace    http://tampermonkey.net/
-// @version      0.5
+// @version      0.6
 // @description  Invoke Ghostreader & apply "ta" tag, then reload queue page until empty
 // @author       cam-barts
 // @match        https://read.readwise.io/filter/*
@@ -152,7 +152,7 @@
     const meta = {
       id: 'readwise-auto-tag-loop',
       name: 'Readwise Auto-Tag Loop (Simple Reload)',
-      version: '0.5',
+      version: '0.6',
       updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Readwise%20Auto-Tag%20Loop%20(Simple%20Reload).user.js',
       downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Readwise%20Auto-Tag%20Loop%20(Simple%20Reload).user.js',
       description: 'Invoke Ghostreader & apply "ta" tag, then reload queue page until empty',

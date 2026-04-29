@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Confluence Menu: Reading Score
-// @version      0.7
+// @version      0.8
 // @description  Add command menu to Confluence pages
 // @author       cam-barts
 // @match        *://*/wiki/*
@@ -453,7 +453,7 @@ Sentence Count: ${sentenceCount}
 		const meta = {
 			id: 'confluence-reading-score',
 			name: 'Confluence Menu: Reading Score',
-			version: '0.7',
+			version: '0.8',
 			updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Reading%20Score.user.js',
 			downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Reading%20Score.user.js',
 			description: 'Analyzes readability of Confluence page content with sentence highlighting',

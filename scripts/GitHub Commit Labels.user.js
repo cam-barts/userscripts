@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Commit Labels
 // @namespace    https://github.com/nazdridoy
-// @version      1.6.6
+// @version      1.6.7
 // @description  Enhances GitHub commits with beautiful labels for conventional commit types (feat, fix, docs, etc.)
 // @author       nazdridoy
 // @license      MIT
@@ -1772,7 +1772,7 @@ SOFTWARE.
         const scriptMeta = {
             id: 'github-commit-labels',
             name: 'GitHub Commit Labels',
-            version: '1.6.6',
+            version: '1.6.7',
             updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/GitHub%20Commit%20Labels.user.js',
             downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/GitHub%20Commit%20Labels.user.js',
             description: 'Enhances GitHub commits with beautiful labels for conventional commit types',
