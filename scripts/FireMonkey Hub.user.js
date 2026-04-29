@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         FireMonkey Hub
-// @version      0.7
+// @version      0.8
 // @description  Unified floating action hub for all FireMonkey userscripts
 // @author       cam-barts
 // @match        *://*/*
@@ -1015,7 +1015,7 @@
 
   // Announce we're ready to accept registrations. Consumers that loaded
   // before us listen for this and re-emit their declarations.
-  _emit('hubReady', { version: '0.7' });
+  _emit('hubReady', { version: '0.8' });
   _dbg('dispatched fmhub:hubReady');
 
   _request('getState').then(state => {

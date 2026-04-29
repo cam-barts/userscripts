@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         FireMonkey Hub Backend
-// @version      0.6
+// @version      0.7
 // @description  Persistent storage and network backend for FireMonkey Hub
 // @author       cam-barts
 // @match        *://*/*
@@ -457,5 +457,5 @@
     setTimeout(() => checkUpdates(state), 3000);
   }
 
-  emit('hello', { version: '0.6' });
+  emit('hello', { version: '0.7' });
 })();
