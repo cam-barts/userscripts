@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         FireMonkey Hub Backend
-// @version      0.1
+// @version      0.2
 // @description  Persistent storage and network backend for FireMonkey Hub
 // @author       cam-barts
 // @match        *://*/*

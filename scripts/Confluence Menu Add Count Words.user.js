@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Confluence Menu: Add Count Words
-// @version      0.2
+// @version      0.3
 // @description  Add command menu to Confluence pages
 // @author       cam-barts
 // @match        *://*/wiki/*

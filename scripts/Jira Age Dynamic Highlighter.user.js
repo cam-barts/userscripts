@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Jira: Issue‐Age Dynamic Highlighter
-// @version      0.1
+// @version      0.2
 // @description  Color‐code Jira issue rows from green (new) to red (old) by table's oldest issue age
 // @author       cam-barts
 // @match        https://*.atlassian.net/jira/servicedesk/projects/*/queues/*
