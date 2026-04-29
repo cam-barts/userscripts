@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Commit Labels
 // @namespace    https://github.com/nazdridoy
-// @version      1.6.5
+// @version      1.6.6
 // @description  Enhances GitHub commits with beautiful labels for conventional commit types (feat, fix, docs, etc.)
 // @author       nazdridoy
 // @license      MIT

@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Jira: show customfield IDs on hover
-// @version      0.4
+// @version      0.5
 // @description  Hover a field label on a Jira issue to see its customfield_xxx ID.
 // @author       cam-barts
 // @match        https://*.atlassian.net/browse/*
