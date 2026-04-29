@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         FireMonkey Hub
-// @version      0.2
+// @version      0.3
 // @description  Unified floating action hub for all FireMonkey userscripts
 // @author       cam-barts
 // @match        *://*/*

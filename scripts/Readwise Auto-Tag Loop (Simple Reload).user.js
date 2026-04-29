@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Readwise Auto-Tag Loop (Simple Reload)
 // @namespace    http://tampermonkey.net/
-// @version      0.2
+// @version      0.3
 // @description  Invoke Ghostreader & apply "ta" tag, then reload queue page until empty
 // @author       cam-barts
 // @match        https://read.readwise.io/filter/*

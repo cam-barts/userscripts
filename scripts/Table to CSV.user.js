@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Table to CSV
-// @version      0.3
+// @version      0.4
 // @description  Detect tables on any page, let the user select one, and download it as CSV
 // @author       cam-barts
 // @match        *://*/*
