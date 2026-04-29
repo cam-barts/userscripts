@@ -5,7 +5,7 @@
 // @author       cam-barts
 // @match        *://*/*
 // @run-at       document-start
-// @grant        GM.fetch
+// @grant        GM.xmlHttpRequest
 // @grant        GM.setValue
 // @grant        GM.getValue
 // @grant        GM.openInTab
@@ -91,11 +91,28 @@
     state.rateLimit.used++;
   }
 
+  function gmFetch(url, options = {}) {
+    return new Promise((resolve, reject) => {
+      GM.xmlHttpRequest({
+        method: options.method || 'GET',
+        url,
+        headers: options.headers || {},
+        onload(r) {
+          const etagMatch = (r.responseHeaders || '').match(/\betag\s*:\s*([^\r\n]+)/i);
+          resolve({
+            status: r.status,
+            responseText: r.responseText,
+            responseHeaders: { etag: etagMatch ? etagMatch[1].trim() : null },
+          });
+        },
+        onerror() { reject(new Error('Network error')); },
+        ontimeout() { reject(new Error('Timeout')); },
+      });
+    });
+  }
+
   function getResponseText(r) {
-    if (!r) return '';
-    if (typeof r.responseText === 'string') return r.responseText;
-    if (typeof r.text === 'string') return r.text;
-    return '';
+    return (r && typeof r.responseText === 'string') ? r.responseText : '';
   }
 
   async function checkUpdates(state, forceCheck = false) {
@@ -110,7 +127,7 @@
     await Promise.all(entries.map(async ([id, script]) => {
       if (!script.updateURL) return;
       try {
-        const r = await GM.fetch(script.updateURL);
+        const r = await gmFetch(script.updateURL);
         const text = getResponseText(r);
         if (!text) return;
         const metaEnd = text.search(/==\/UserScript==/i);
@@ -144,10 +161,10 @@
     useRateSlot(state);
 
     try {
-      const r = await GM.fetch(apiUrl, { headers });
+      const r = await gmFetch(apiUrl, { headers });
       const text = getResponseText(r);
 
-      if (r?.status === 304 || r?.responseStatus === 304) {
+      if (r?.status === 304) {
         state.repo.lastCheckedAt = new Date().toISOString();
         await saveState(state);
         return { rateLimited: false, newScripts: [] };
@@ -174,7 +191,7 @@
 
       const newScripts = await Promise.all(newFiles.map(async (f) => {
         try {
-          const r2 = await GM.fetch(f.download_url, { headers: { Range: 'bytes=0-2047' } });
+          const r2 = await gmFetch(f.download_url, { headers: { Range: 'bytes=0-2047' } });
           const header = getResponseText(r2);
           const descMatch = header.match(/^\/\/ @description\s+(.+)/m);
           const nameMatch = header.match(/^\/\/ @name\s+(.+)/m);
