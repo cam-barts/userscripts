@@ -14,23 +14,20 @@
   'use strict';
 
   // ── Debug Logger ───────────────────────────────────────────────────
-  // Toggle: set window.__FMHUB_DEBUG__ = false in the console to silence.
   if (typeof window.__FMHUB_DEBUG__ === 'undefined') window.__FMHUB_DEBUG__ = true;
   function _dbg(...args) {
     if (!window.__FMHUB_DEBUG__) return;
     try { console.log('[fmhub:hub]', ...args); } catch { }
   }
-  _dbg('script loaded, version 0.3, location=', location.href);
+  _dbg('script loaded, location=', location.href);
 
-  // ── Bridge ─────────────────────────────────────────────────────────
+  // ── Bridge to backend ──────────────────────────────────────────────
 
   let _reqId = 0;
   let _backendAlive = false;
   let _readyResolve;
   const _ready = new Promise(r => (_readyResolve = r));
   let _stateCache = null;
-  // In-memory mirror of state.scripts so the UI works before/without backend.
-  // Backend's persisted state is the source of truth when it's online.
   const _localScripts = {};
 
   function _request(type, payload = {}) {
@@ -58,6 +55,21 @@
     });
   }
 
+  // ── Event protocol (cross-realm safe; JSON-string detail only) ─────
+
+  function _emit(type, payload) {
+    document.dispatchEvent(new CustomEvent('fmhub:' + type, {
+      detail: JSON.stringify(payload == null ? {} : payload)
+    }));
+  }
+
+  function _onEvent(type, handler) {
+    document.addEventListener('fmhub:' + type, function (e) {
+      try { handler(JSON.parse(e.detail || '{}')); }
+      catch (err) { _dbg('event parse error', type, err && err.message); }
+    });
+  }
+
   // ── Registries ─────────────────────────────────────────────────────
 
   const _commands = new Map();
@@ -76,164 +88,173 @@
     return f.enabled !== undefined ? f.enabled : (reg.defaultEnabled !== false);
   }
 
-  function _applyFeature(id, enabled) {
+  function _featureEnabledFromCache(id, featureCache) {
     const reg = _features.get(id);
-    if (!reg) return;
-    try {
-      if (enabled && typeof reg.onEnable === 'function') reg.onEnable();
-      if (!enabled && typeof reg.onDisable === 'function') reg.onDisable();
-    } catch (err) {
-      console.error('[fmhub] feature callback error:', err);
-    }
-    for (const cb of reg.listeners) { try { cb(enabled); } catch { } }
+    if (!reg) return true;
+    const f = featureCache[id];
+    if (!f) return reg.defaultEnabled !== false;
+    const host = location.hostname;
+    if (reg.scope === 'origin' && host && f.origins && f.origins[host] !== undefined) return f.origins[host];
+    return f.enabled !== undefined ? f.enabled : (reg.defaultEnabled !== false);
   }
 
-  // ── window.FireMonkeyHub API ────────────────────────────────────────
+  function _broadcastFeature(id) {
+    _emit('featureChanged', { id, enabled: _featureEnabled(id) });
+  }
+
+  // ── Internal handlers (used by both event listeners and same-realm API) ─
+
+  function _internalDeclareScript(config) {
+    if (!config || !config.id) return;
+    _dbg('declareScript', config.id, 'v' + config.version);
+    const prev = _localScripts[config.id] || {};
+    _localScripts[config.id] = {
+      name: config.name,
+      version: config.version,
+      updateURL: config.updateURL || '',
+      downloadURL: config.downloadURL || '',
+      description: config.description || '',
+      upstreamURL: config.upstreamURL || null,
+      lastSeen: new Date().toISOString(),
+      latestKnown: prev.latestKnown || null,
+      dismissedUpdates: prev.dismissedUpdates || [],
+    };
+    if (_backendAlive) {
+      _request('declareScript', {
+        scriptId: config.id,
+        name: config.name,
+        version: config.version,
+        updateURL: config.updateURL,
+        downloadURL: config.downloadURL,
+        description: config.description || '',
+        upstreamURL: config.upstreamURL || null,
+      }).catch((err) => { _dbg('declareScript backend failed', config.id, err && err.message); });
+    } else {
+      _dbg('declareScript queued locally (backend not alive)', config.id);
+    }
+    _renderActiveTab();
+  }
+
+  // invokeFn is what runs when the user clicks "Run".
+  // For cross-realm consumers, it dispatches fmhub:invoke; the consumer's
+  // local listener runs the actual callback.
+  function _internalRegisterCommand(config, invokeFn) {
+    if (!config || !config.id) return;
+    _dbg('registerCommand', config.id, 'group=', config.group || '(none)');
+    _commands.set(config.id, {
+      name: config.name || config.id,
+      tooltip: config.tooltip || '',
+      color: config.color || '#4CAF50',
+      group: config.group || '',
+      enabled: config.enabled !== false,
+      invoke: invokeFn,
+    });
+    _renderActiveTab();
+  }
+
+  function _internalUnregisterCommand(id) {
+    _commands.delete(id);
+    _renderActiveTab();
+  }
+
+  function _internalSetCommandEnabled(id, enabled) {
+    const c = _commands.get(id);
+    if (!c) return;
+    c.enabled = !!enabled;
+    _renderActiveTab();
+  }
+
+  function _internalRegisterFeature(config) {
+    if (!config || !config.id) return;
+    _dbg('registerFeature', config.id, 'scope=', config.scope || 'global');
+    _features.set(config.id, {
+      label: config.label || config.id,
+      description: config.description || '',
+      defaultEnabled: config.defaultEnabled !== false,
+      scope: config.scope || 'global',
+    });
+    // Once state is loaded, push initial state to the consumer so onEnable/onDisable run.
+    _ready.then(() => {
+      _broadcastFeature(config.id);
+      _renderActiveTab();
+    });
+  }
+
+  function _internalSetFeatureEnabled(id, enabled, scope) {
+    if (!_stateCache) _stateCache = { features: {}, scripts: {}, repo: {}, ui: {}, rateLimit: {} };
+    if (!_stateCache.features[id]) _stateCache.features[id] = { enabled: true, origins: {} };
+    const host = location.hostname;
+    if (scope === 'origin') {
+      _stateCache.features[id].origins = _stateCache.features[id].origins || {};
+      _stateCache.features[id].origins[host] = enabled;
+    } else {
+      _stateCache.features[id].enabled = enabled;
+    }
+    _broadcastFeature(id);
+    if (_backendAlive) {
+      _request('setFeatureEnabled', { featureId: id, enabled, scope: scope || 'global', origin: host }).catch(() => {});
+    }
+    _renderActiveTab();
+  }
+
+  // ── Event listeners (cross-realm registration) ─────────────────────
+
+  _onEvent('declareScript', (p) => _internalDeclareScript(p));
+  _onEvent('registerCommand', (p) => {
+    _internalRegisterCommand(p, () => _emit('invoke', { id: p.id }));
+  });
+  _onEvent('unregisterCommand', (p) => _internalUnregisterCommand(p.id));
+  _onEvent('setCommandEnabled', (p) => _internalSetCommandEnabled(p.id, p.enabled));
+  _onEvent('registerFeature', (p) => _internalRegisterFeature(p));
+  _onEvent('setFeatureEnabled', (p) => _internalSetFeatureEnabled(p.id, p.enabled, p.scope || 'global'));
+
+  // ── Same-realm API (kept minimal for diagnostic / direct access) ───
+  // Cross-realm consumers must use the event protocol.
 
   window.FireMonkeyHub = {
     get ready() { return _ready; },
-
+    declareScript: _internalDeclareScript,
     registerCommand(config) {
-      if (!config.id) { console.warn('[fmhub] registerCommand missing id'); return { unregister() {}, setEnabled() {} }; }
-      _dbg('registerCommand', config.id, 'group=', config.group || '(none)');
-      const entry = {
-        name: config.name || config.id,
-        tooltip: config.tooltip || '',
-        color: config.color || '#4CAF50',
-        group: config.group || '',
-        callback: config.callback,
-        enabled: config.enabled !== false,
-      };
-      _commands.set(config.id, entry);
-      _renderActiveTab();
+      if (!config || !config.id) return { unregister() {}, setEnabled() {} };
+      _internalRegisterCommand(config, () => {
+        try { typeof config.callback === 'function' && config.callback(); }
+        catch (err) { console.error('[fmhub] cmd error:', err); }
+      });
       return {
-        unregister() { _commands.delete(config.id); _renderActiveTab(); },
-        setEnabled(val) { entry.enabled = val; _renderActiveTab(); },
+        unregister() { _internalUnregisterCommand(config.id); },
+        setEnabled(val) { _internalSetCommandEnabled(config.id, val); },
       };
     },
-
     registerFeature(config) {
-      if (!config.id) { console.warn('[fmhub] registerFeature missing id'); return { isEnabled: () => true, setEnabled: async () => {}, onChange: () => () => {} }; }
-      _dbg('registerFeature', config.id, 'scope=', config.scope || 'global', 'defaultEnabled=', config.defaultEnabled !== false);
+      if (!config || !config.id) return { isEnabled: () => true, setEnabled: async () => {}, onChange: () => () => {} };
       const listeners = [];
-      const entry = {
-        label: config.label || config.id,
-        description: config.description || '',
-        defaultEnabled: config.defaultEnabled !== false,
-        scope: config.scope || 'global',
-        onEnable: config.onEnable,
-        onDisable: config.onDisable,
-        listeners,
-      };
-      _features.set(config.id, entry);
-      _ready.then(() => {
-        const enabled = _featureEnabled(config.id);
-        if (enabled && typeof config.onEnable === 'function') {
-          try { config.onEnable(); } catch { }
-        } else if (!enabled && typeof config.onDisable === 'function') {
-          try { config.onDisable(); } catch { }
-        }
-        _renderActiveTab();
+      _internalRegisterFeature(config);
+      // Same-realm callers: bridge featureChanged events back to onEnable/onDisable/listeners.
+      let lastEnabled = null;
+      document.addEventListener('fmhub:featureChanged', function (e) {
+        try {
+          const data = JSON.parse(e.detail || '{}');
+          if (data.id !== config.id) return;
+          if (lastEnabled === data.enabled) return;
+          lastEnabled = data.enabled;
+          if (data.enabled && typeof config.onEnable === 'function') { try { config.onEnable(); } catch (err) { console.error('[fmhub] onEnable:', err); } }
+          if (!data.enabled && typeof config.onDisable === 'function') { try { config.onDisable(); } catch (err) { console.error('[fmhub] onDisable:', err); } }
+          for (const cb of listeners) { try { cb(data.enabled); } catch {} }
+        } catch {}
       });
-      const handle = {
+      return {
         isEnabled() { return _featureEnabled(config.id); },
-        async setEnabled(val, scope = 'global') {
-          if (!_stateCache) { _stateCache = { features: {}, scripts: {}, repo: {}, ui: {}, rateLimit: {} }; }
-          if (!_stateCache.features[config.id]) _stateCache.features[config.id] = { enabled: true, origins: {} };
-          const host = location.hostname;
-          if (scope === 'origin') {
-            _stateCache.features[config.id].origins = _stateCache.features[config.id].origins || {};
-            _stateCache.features[config.id].origins[host] = val;
-          } else {
-            _stateCache.features[config.id].enabled = val;
-          }
-          _applyFeature(config.id, _featureEnabled(config.id));
-          _renderActiveTab();
-          if (_backendAlive) {
-            await _request('setFeatureEnabled', { featureId: config.id, enabled: val, scope, origin: host });
-          }
-        },
-        onChange(cb) {
-          listeners.push(cb);
-          return () => { const i = listeners.indexOf(cb); if (i >= 0) listeners.splice(i, 1); };
-        },
+        async setEnabled(val, scope = 'global') { _internalSetFeatureEnabled(config.id, val, scope); },
+        onChange(cb) { listeners.push(cb); return () => { const i = listeners.indexOf(cb); if (i >= 0) listeners.splice(i, 1); }; },
       };
-      return handle;
     },
-
-    declareScript(config) {
-      if (!config.id) return;
-      _dbg('declareScript', config.id, 'v' + config.version, 'downloadURL=', config.downloadURL);
-      // Mirror locally so the UI shows declared scripts even when the backend
-      // is offline or the handshake hasn't completed yet.
-      _localScripts[config.id] = {
-        name: config.name,
-        version: config.version,
-        updateURL: config.updateURL || '',
-        downloadURL: config.downloadURL || '',
-        description: config.description || '',
-        upstreamURL: config.upstreamURL || null,
-        lastSeen: new Date().toISOString(),
-        latestKnown: _localScripts[config.id]?.latestKnown || null,
-        dismissedUpdates: _localScripts[config.id]?.dismissedUpdates || [],
-      };
-      _ready.then(() => {
-        if (_backendAlive) {
-          _request('declareScript', {
-            scriptId: config.id,
-            name: config.name,
-            version: config.version,
-            updateURL: config.updateURL,
-            downloadURL: config.downloadURL,
-            description: config.description || '',
-            upstreamURL: config.upstreamURL || null,
-          }).catch((err) => { _dbg('declareScript backend failed', config.id, err); });
-        } else {
-          _dbg('declareScript: backend not alive, kept in _localScripts only', config.id);
-        }
-        _renderActiveTab();
-      });
-    },
-
     openHub() { _openPanel(); },
     closeHub() { _closePanel(); },
     toggleHub() { _panelOpen ? _closePanel() : _openPanel(); },
-
-    async notify({ title, body, level } = {}) {
-      if (_backendAlive) {
-        await _request('openInTab', { url: 'data:text/plain,' }).catch(() => {});
-      }
-      console.log(`[fmhub] ${level || 'info'}: ${title} — ${body}`);
-    },
   };
 
-  // ── FireMonkeyMenu back-compat ──────────────────────────────────────
-
-  window.FireMonkeyMenu = {
-    registerCommand(config) {
-      const id = 'confluence.' + (config.name || '').replace(/\s+/g, '-').toLowerCase() + '.' + Math.random().toString(36).slice(2, 7);
-      return window.FireMonkeyHub.registerCommand({
-        id,
-        name: config.name,
-        tooltip: config.tooltip,
-        color: config.color,
-        group: 'Confluence',
-        callback: config.callback,
-        enabled: config.enabled !== false,
-      });
-    },
-  };
-
-  // Signal to consumers that the Hub API is ready, passing the hub as detail
-  // to bypass potential per-script window sandbox isolation in FireMonkey
-  _dbg('dispatching fmhub:loaded (window.FireMonkeyHub set)');
-  document.dispatchEvent(new CustomEvent('fmhub:loaded', { detail: window.FireMonkeyHub }));
-
-  // Console-accessible diagnostic helper — run window.fmhubDiag() in the
-  // browser console at any time to dump the current Hub state.
   window.fmhubDiag = function () {
     const out = {
-      version: '0.3',
       backendAlive: _backendAlive,
       stateCacheLoaded: !!_stateCache,
       commandCount: _commands.size,
@@ -581,16 +602,16 @@
     if (cmd.tooltip) name.title = cmd.tooltip;
     row.appendChild(dot);
     row.appendChild(name);
-    if (enabled && typeof cmd.callback === 'function') {
+    if (enabled && typeof cmd.invoke === 'function') {
       const runBtn = document.createElement('button');
       runBtn.className = 'cmd-run';
       runBtn.textContent = 'Run';
       runBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        try { cmd.callback(); } catch (err) { console.error('[fmhub] cmd error:', err); }
+        try { cmd.invoke(); } catch (err) { console.error('[fmhub] invoke error:', err); }
       });
       row.appendChild(runBtn);
-      row.addEventListener('click', () => { try { cmd.callback(); } catch { } });
+      row.addEventListener('click', () => { try { cmd.invoke(); } catch { } });
     }
     return row;
   }
@@ -609,13 +630,7 @@
       row.className = 'feat';
       const globalEnabled = _stateCache?.features[id]?.enabled ?? feat.defaultEnabled;
       const toggle = _mkToggle(globalEnabled, (val) => {
-        const handle = window.FireMonkeyHub.registerFeature; // won't use; use direct
-        if (!_stateCache) _stateCache = { features: {}, scripts: {}, repo: {}, ui: {}, rateLimit: {} };
-        if (!_stateCache.features[id]) _stateCache.features[id] = { enabled: true, origins: {} };
-        _stateCache.features[id].enabled = val;
-        _applyFeature(id, _featureEnabled(id));
-        if (_backendAlive) _request('setFeatureEnabled', { featureId: id, enabled: val, scope: 'global', origin: location.hostname }).catch(() => {});
-        _renderActiveTab();
+        _internalSetFeatureEnabled(id, val, 'global');
       });
       const label = document.createElement('span');
       label.className = 'feat-label';
@@ -648,21 +663,20 @@
         siteBtn.addEventListener('click', () => {
           if (!_stateCache) _stateCache = { features: {}, scripts: {}, repo: {}, ui: {}, rateLimit: {} };
           if (!_stateCache.features[id]) _stateCache.features[id] = { enabled: true, origins: {} };
+          let newVal;
           if (siteVal === undefined) {
-            _stateCache.features[id].origins[host] = !globalEnabled;
+            newVal = !globalEnabled;
+            _stateCache.features[id].origins[host] = newVal;
           } else if (siteVal !== globalEnabled) {
             delete _stateCache.features[id].origins[host];
+            newVal = globalEnabled;
           } else {
-            _stateCache.features[id].origins[host] = !siteVal;
+            newVal = !siteVal;
+            _stateCache.features[id].origins[host] = newVal;
           }
-          _applyFeature(id, _featureEnabled(id));
+          _broadcastFeature(id);
           if (_backendAlive) {
-            const newVal = _stateCache.features[id].origins[host];
-            if (newVal !== undefined) {
-              _request('setFeatureEnabled', { featureId: id, enabled: newVal, scope: 'origin', origin: host }).catch(() => {});
-            } else {
-              _request('setFeatureEnabled', { featureId: id, enabled: globalEnabled, scope: 'origin', origin: host }).catch(() => {});
-            }
+            _request('setFeatureEnabled', { featureId: id, enabled: newVal, scope: 'origin', origin: host }).catch(() => {});
           }
           _renderActiveTab();
         });
@@ -687,8 +701,6 @@
     return wrap;
   }
 
-  // Merge backend-persisted scripts with the in-memory mirror so the panel
-  // renders something even before the backend handshake completes.
   function _allDeclaredScripts() {
     const merged = { ..._localScripts };
     const remote = _stateCache?.scripts || {};
@@ -698,9 +710,6 @@
     return merged;
   }
 
-  // Normalize raw.githubusercontent URLs so '/refs/heads/main/' and '/main/'
-  // forms compare equal — GitHub's API returns the short form, but both
-  // are valid raw URLs.
   function _normalizeRawURL(url) {
     if (!url) return '';
     return url.replace('/refs/heads/', '/');
@@ -798,14 +807,10 @@
     const checkBtn = document.createElement('button');
     checkBtn.className = 'sbtn';
     checkBtn.textContent = 'Refresh';
-    let _pendingNewScripts = null;
     checkBtn.addEventListener('click', async () => {
       checkBtn.textContent = '…';
       checkBtn.disabled = true;
-      try {
-        const result = await _request('discoverRepo');
-        _pendingNewScripts = result.newScripts;
-      } catch { }
+      try { await _request('discoverRepo'); } catch { }
       checkBtn.textContent = 'Refresh';
       checkBtn.disabled = false;
       _renderActiveTab();
@@ -818,21 +823,15 @@
     const installedURLs = new Set(
       Object.values(allDeclared).map(s => _normalizeRawURL(s.downloadURL)).filter(Boolean)
     );
-    _dbg('discover: installedURLs', [...installedURLs]);
     const ignored = new Set(_stateCache?.repo?.ignored || []);
     const knownPaths = _stateCache?.repo?.knownPaths || [];
-    const repoBaseFilter = (_stateCache?.repo?.url || '').replace('https://github.com/', '');
-    const branchFilter = _stateCache?.repo?.branch || 'main';
+    const repoBase = (_stateCache?.repo?.url || '').replace('https://github.com/', '');
+    const branch = _stateCache?.repo?.branch || 'main';
 
-    // Only show scripts that are in knownPaths but not installed and not ignored
     const discovered = knownPaths.filter(path => {
       if (ignored.has(path)) return false;
-      const downloadURL = _normalizeRawURL(
-        `https://raw.githubusercontent.com/${repoBaseFilter}/${branchFilter}/${path}`
-      );
-      const isInstalled = installedURLs.has(downloadURL);
-      _dbg('discover filter', path, 'url=', downloadURL, 'installed=', isInstalled);
-      return !isInstalled;
+      const downloadURL = _normalizeRawURL(`https://raw.githubusercontent.com/${repoBase}/${branch}/${path}`);
+      return !installedURLs.has(downloadURL);
     });
 
     if (!discovered.length) {
@@ -842,8 +841,6 @@
       _contentEl.appendChild(el);
       return;
     }
-    const repoBase = (_stateCache?.repo?.url || '').replace('https://github.com/', '');
-    const branch = _stateCache?.repo?.branch || 'main';
     for (const path of discovered) {
       const downloadURL = `https://raw.githubusercontent.com/${repoBase}/${branch}/${path}`;
       const name = path.split('/').pop().replace('.user.js', '');
@@ -956,7 +953,7 @@
         for (const [id] of _features) {
           const wasEnabled = _featureEnabledFromCache(id, prevFeatures);
           const isEnabled = _featureEnabled(id);
-          if (wasEnabled !== isEnabled) _applyFeature(id, isEnabled);
+          if (wasEnabled !== isEnabled) _broadcastFeature(id);
         }
       }
       if (update.scripts) Object.assign(_stateCache.scripts, update.scripts);
@@ -965,16 +962,6 @@
       _renderActiveTab();
     } catch { }
   });
-
-  function _featureEnabledFromCache(id, featureCache) {
-    const reg = _features.get(id);
-    if (!reg) return true;
-    const f = featureCache[id];
-    if (!f) return reg.defaultEnabled !== false;
-    const host = location.hostname;
-    if (reg.scope === 'origin' && host && f.origins && f.origins[host] !== undefined) return f.origins[host];
-    return f.enabled !== undefined ? f.enabled : (reg.defaultEnabled !== false);
-  }
 
   // ── SPA Nav Resilience ──────────────────────────────────────────────
 
@@ -989,7 +976,11 @@
   _createUI();
   _dbg('UI created, requesting state from backend');
 
-  // Request state from backend; timeout gracefully
+  // Announce we're ready to accept registrations. Consumers that loaded
+  // before us listen for this and re-emit their declarations.
+  _emit('hubReady', { version: '0.4' });
+  _dbg('dispatched fmhub:hubReady');
+
   _request('getState').then(state => {
     _dbg('getState resolved, scripts=', Object.keys(state?.scripts || {}).length, 'features=', Object.keys(state?.features || {}).length);
     _stateCache = state;
@@ -997,6 +988,9 @@
     _applyStoredPosition();
     _updateBadge();
     _readyResolve();
+    // Re-broadcast feature state for already-registered features now that
+    // we know the persisted enabled state.
+    for (const [id] of _features) _broadcastFeature(id);
     _renderActiveTab();
   }).catch((err) => {
     _dbg('getState FAILED → backend not reachable:', err && err.message);
@@ -1005,7 +999,6 @@
     _renderActiveTab();
   });
 
-  // Timeout fallback: resolve ready even without backend
   setTimeout(() => {
     if (!_backendAlive) _dbg('ready timeout — backend never responded');
     _readyResolve();

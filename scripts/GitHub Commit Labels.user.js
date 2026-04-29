@@ -1695,55 +1695,90 @@ SOFTWARE.
         }
     }, 100));
 
-    // ──── Hub integration ────
+    // ──── Hub integration (event-only protocol, cross-realm safe) ────
     (function () {
-        function _setup(hub) {
-            hub = hub || window.FireMonkeyHub;
-            if (!hub) return;
-            _hubPresent = true;
-            hub.ready.then(function () {
-                const existing = document.getElementById('commit-labels-buttons');
-                if (existing) existing.remove();
+        const TAG = '[fmhub:commit-labels]';
+        const _cmds = new Map();
+        const _feats = new Map();
+        const _scripts = [];
 
-                hub.registerFeature({
-                    id: 'github-commit-labels',
-                    label: 'GitHub Commit Labels',
-                    description: 'Adds conventional commit type labels to GitHub commit lists',
-                    scope: 'origin',
-                    defaultEnabled: true,
-                    onEnable: function () {
-                        USER_CONFIG.labelsVisible = true;
-                        GM_setValue('commitLabelsConfig', USER_CONFIG);
-                        document.querySelectorAll('.commit-label').forEach(function (l) { l.style.display = 'inline-flex'; });
-                    },
-                    onDisable: function () {
-                        USER_CONFIG.labelsVisible = false;
-                        GM_setValue('commitLabelsConfig', USER_CONFIG);
-                        document.querySelectorAll('.commit-label').forEach(function (l) { l.style.display = 'none'; });
-                    },
-                });
-                hub.registerCommand({
-                    id: 'github-commit-labels.settings',
-                    name: 'Commit Label Settings',
-                    group: 'GitHub',
-                    color: '#238636',
-                    callback: createConfigWindow,
-                });
-                hub.declareScript({
-                    id: 'github-commit-labels',
-                    name: 'GitHub Commit Labels',
-                    version: '1.6.2',
-                    updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/GitHub%20Commit%20Labels.user.js',
-                    downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/GitHub%20Commit%20Labels.user.js',
-                    description: 'Enhances GitHub commits with beautiful labels for conventional commit types',
-                    upstreamURL: 'https://github.com/nazdridoy/github-commit-labels',
-                });
-            });
+        function _emit(t, p) {
+            document.dispatchEvent(new CustomEvent('fmhub:' + t, { detail: JSON.stringify(p || {}) }));
         }
-        if (window.FireMonkeyHub) {
-            _setup(window.FireMonkeyHub);
-        } else {
-            document.addEventListener('fmhub:loaded', function(e) { _setup(e.detail); }, { once: true });
-        }
+
+        document.addEventListener('fmhub:invoke', function (e) {
+            try {
+                const { id } = JSON.parse(e.detail || '{}');
+                const c = _cmds.get(id);
+                if (c && typeof c.cb === 'function') { try { c.cb(); } catch (err) { console.error(TAG, err); } }
+            } catch {}
+        });
+
+        document.addEventListener('fmhub:featureChanged', function (e) {
+            try {
+                const { id, enabled } = JSON.parse(e.detail || '{}');
+                const f = _feats.get(id);
+                if (!f) return;
+                if (f.last === enabled) return;
+                f.last = enabled;
+                try {
+                    if (enabled && f.onEnable) f.onEnable();
+                    if (!enabled && f.onDisable) f.onDisable();
+                } catch (err) { console.error(TAG, 'feature', err); }
+            } catch {}
+        });
+
+        document.addEventListener('fmhub:hubReady', function () {
+            _hubPresent = true;
+            const existing = document.getElementById('commit-labels-buttons');
+            if (existing) existing.remove();
+            for (const [id, c] of _cmds) _emit('registerCommand', { id, ...c.meta });
+            for (const [id, f] of _feats) _emit('registerFeature', { id, ...f.meta });
+            for (const s of _scripts) _emit('declareScript', s);
+        });
+
+        const featMeta = {
+            label: 'GitHub Commit Labels',
+            description: 'Adds conventional commit type labels to GitHub commit lists',
+            scope: 'origin',
+            defaultEnabled: true,
+        };
+        _feats.set('github-commit-labels', {
+            onEnable: function () {
+                USER_CONFIG.labelsVisible = true;
+                GM_setValue('commitLabelsConfig', USER_CONFIG);
+                document.querySelectorAll('.commit-label').forEach(function (l) { l.style.display = 'inline-flex'; });
+            },
+            onDisable: function () {
+                USER_CONFIG.labelsVisible = false;
+                GM_setValue('commitLabelsConfig', USER_CONFIG);
+                document.querySelectorAll('.commit-label').forEach(function (l) { l.style.display = 'none'; });
+            },
+            last: null,
+            meta: featMeta,
+        });
+        _emit('registerFeature', { id: 'github-commit-labels', ...featMeta });
+
+        const cmdMeta = {
+            name: 'Commit Label Settings',
+            tooltip: '',
+            color: '#238636',
+            group: 'GitHub',
+            enabled: true,
+        };
+        _cmds.set('github-commit-labels.settings', { cb: createConfigWindow, meta: cmdMeta });
+        _emit('registerCommand', { id: 'github-commit-labels.settings', ...cmdMeta });
+
+        const scriptMeta = {
+            id: 'github-commit-labels',
+            name: 'GitHub Commit Labels',
+            version: '1.6.2',
+            updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/GitHub%20Commit%20Labels.user.js',
+            downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/GitHub%20Commit%20Labels.user.js',
+            description: 'Enhances GitHub commits with beautiful labels for conventional commit types',
+            upstreamURL: 'https://github.com/nazdridoy/github-commit-labels',
+        };
+        _scripts.push(scriptMeta);
+        _emit('declareScript', scriptMeta);
     })();
 })();

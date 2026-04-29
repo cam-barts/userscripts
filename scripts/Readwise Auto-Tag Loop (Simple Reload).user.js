@@ -147,23 +147,21 @@
     await doTagFlow(firstLink);
   })();
 
+  // Hub integration: event-only protocol (cross-realm safe)
   (function () {
-    function _reg(hub) {
-      hub = hub || window.FireMonkeyHub;
-      if (!hub) return;
-      hub.ready.then(function () {
-        hub.declareScript({
-          id: 'readwise-auto-tag-loop',
-          name: 'Readwise Auto-Tag Loop (Simple Reload)',
-          version: '0.1',
-          updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Readwise%20Auto-Tag%20Loop%20(Simple%20Reload).user.js',
-          downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Readwise%20Auto-Tag%20Loop%20(Simple%20Reload).user.js',
-          description: 'Invoke Ghostreader & apply "ta" tag, then reload queue page until empty',
-        });
-      });
+    const meta = {
+      id: 'readwise-auto-tag-loop',
+      name: 'Readwise Auto-Tag Loop (Simple Reload)',
+      version: '0.1',
+      updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Readwise%20Auto-Tag%20Loop%20(Simple%20Reload).user.js',
+      downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Readwise%20Auto-Tag%20Loop%20(Simple%20Reload).user.js',
+      description: 'Invoke Ghostreader & apply "ta" tag, then reload queue page until empty',
+    };
+    function _emit() {
+      document.dispatchEvent(new CustomEvent('fmhub:declareScript', { detail: JSON.stringify(meta) }));
     }
-    if (window.FireMonkeyHub) { _reg(window.FireMonkeyHub); }
-    else { document.addEventListener('fmhub:loaded', function(e) { _reg(e.detail); }, { once: true }); }
+    _emit();
+    document.addEventListener('fmhub:hubReady', _emit);
   })();
 
 })();

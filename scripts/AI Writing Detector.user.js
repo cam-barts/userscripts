@@ -568,63 +568,110 @@
 		document.body.appendChild(summary);
 	}
 
-	// ──── Initialize ────
+	// ──── Initialize: register with FireMonkey Hub via event protocol ────
 	(function () {
-		var TAG = '[fmhub:ai-detector]';
+		const TAG = '[fmhub:ai-detector]';
 		function _log() {
 			if (window.__FMHUB_DEBUG__ === false) return;
 			try { console.log.apply(console, [TAG].concat([].slice.call(arguments))); } catch (e) {}
 		}
-		_log('script loaded; window.FireMonkeyHub at start:', !!window.FireMonkeyHub, 'readyState=', document.readyState);
-		var _done = false;
-		function _hubSetup(hub) {
-			if (_done) return;
-			hub = hub || window.FireMonkeyHub;
-			if (!hub) { _log('_hubSetup called but no hub'); return; }
-			_done = true;
-			_log('_hubSetup proceeding, ready=', typeof hub.ready);
-			hub.ready.then(function () {
-				_log('hub ready resolved — registering feature/command/script');
-				hub.registerFeature({
-					id: 'ai-writing-detector',
-					label: 'AI Writing Detector',
-					description: 'Highlights AI-generated writing patterns',
-					scope: 'origin',
-					defaultEnabled: true,
-					onDisable: function () { if (highlightingEnabled) removeHighlights(); },
-				});
-				hub.registerCommand({
-					id: 'ai-writing-detector.toggle',
-					name: 'AI: Toggle Highlighting',
-					group: 'All Sites',
-					color: '#1B1D23',
-					callback: toggleHighlighting,
-				});
-				hub.declareScript({
-					id: 'ai-writing-detector',
-					name: 'AI Writing Detector',
-					version: '0.2',
-					updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/AI%20Writing%20Detector.user.js',
-					downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/AI%20Writing%20Detector.user.js',
-					description: 'Highlights signs of AI-generated writing',
-				});
-			});
+		_log('script loaded');
+
+		const _cmds = new Map();
+		const _feats = new Map();
+		const _scripts = [];
+		let _hubSeen = false;
+
+		function _emit(t, p) {
+			document.dispatchEvent(new CustomEvent('fmhub:' + t, {
+				detail: JSON.stringify(p || {})
+			}));
 		}
-		if (window.FireMonkeyHub) {
-			_hubSetup(window.FireMonkeyHub);
-		} else {
-			_log('hub not present, waiting for fmhub:loaded event');
-			document.addEventListener('fmhub:loaded', function(e) { _log('fmhub:loaded received, e.detail truthy?', !!e.detail); _hubSetup(e.detail); }, { once: true });
-			setTimeout(function () {
-				if (!_done) {
-					_log('2s fallback fired — hub never reached, building standalone toggle button');
-					if (document.readyState === 'loading') {
-						document.addEventListener('DOMContentLoaded', createToggleButton);
-					} else {
-						createToggleButton();
-					}
+
+		document.addEventListener('fmhub:invoke', function (e) {
+			try {
+				const { id } = JSON.parse(e.detail || '{}');
+				const c = _cmds.get(id);
+				if (c && typeof c.cb === 'function') {
+					try { c.cb(); } catch (err) { console.error(TAG, 'callback', err); }
 				}
-			}, 2000);
+			} catch {}
+		});
+
+		document.addEventListener('fmhub:featureChanged', function (e) {
+			try {
+				const { id, enabled } = JSON.parse(e.detail || '{}');
+				const f = _feats.get(id);
+				if (!f) return;
+				if (f.last === enabled) return;
+				f.last = enabled;
+				try {
+					if (enabled && f.onEnable) f.onEnable();
+					if (!enabled && f.onDisable) f.onDisable();
+				} catch (err) { console.error(TAG, 'feature callback', err); }
+			} catch {}
+		});
+
+		function _emitAll() {
+			for (const [id, c] of _cmds) _emit('registerCommand', { id, ...c.meta });
+			for (const [id, f] of _feats) _emit('registerFeature', { id, ...f.meta });
+			for (const s of _scripts) _emit('declareScript', s);
 		}
+
+		document.addEventListener('fmhub:hubReady', function () {
+			_log('fmhub:hubReady — re-emitting registrations');
+			_hubSeen = true;
+			_emitAll();
+		});
+
+		// Register feature
+		const featMeta = {
+			label: 'AI Writing Detector',
+			description: 'Highlights AI-generated writing patterns',
+			scope: 'origin',
+			defaultEnabled: true,
+		};
+		_feats.set('ai-writing-detector', {
+			onEnable: null,
+			onDisable: function () { if (highlightingEnabled) removeHighlights(); },
+			last: null,
+			meta: featMeta,
+		});
+		_emit('registerFeature', { id: 'ai-writing-detector', ...featMeta });
+
+		// Register command
+		const cmdMeta = {
+			name: 'AI: Toggle Highlighting',
+			tooltip: '',
+			color: '#1B1D23',
+			group: 'All Sites',
+			enabled: true,
+		};
+		_cmds.set('ai-writing-detector.toggle', { cb: toggleHighlighting, meta: cmdMeta });
+		_emit('registerCommand', { id: 'ai-writing-detector.toggle', ...cmdMeta });
+
+		// Declare script
+		const scriptMeta = {
+			id: 'ai-writing-detector',
+			name: 'AI Writing Detector',
+			version: '0.2',
+			updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/AI%20Writing%20Detector.user.js',
+			downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/AI%20Writing%20Detector.user.js',
+			description: 'Highlights signs of AI-generated writing',
+		};
+		_scripts.push(scriptMeta);
+		_emit('declareScript', scriptMeta);
+
+		// Fallback: if Hub never announces, build the standalone toggle button.
+		setTimeout(function () {
+			if (!_hubSeen) {
+				_log('Hub not detected after 2s — building standalone toggle button');
+				if (document.readyState === 'loading') {
+					document.addEventListener('DOMContentLoaded', createToggleButton);
+				} else {
+					createToggleButton();
+				}
+			}
+		}, 2000);
 	})();
 })();

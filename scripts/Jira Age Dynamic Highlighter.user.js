@@ -114,23 +114,21 @@
   // Run highlighting once on page load
   window.addEventListener("load", queueHighlight);
 
+  // Hub integration: event-only protocol (cross-realm safe)
   (function () {
-    function _reg(hub) {
-      hub = hub || window.FireMonkeyHub;
-      if (!hub) return;
-      hub.ready.then(function () {
-        hub.declareScript({
-          id: 'jira-age-highlighter',
-          name: 'Jira: Issue-Age Dynamic Highlighter',
-          version: '0.1',
-          updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Jira%20Age%20Dynamic%20Highlighter.user.js',
-          downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Jira%20Age%20Dynamic%20Highlighter.user.js',
-          description: 'Color-code Jira issue rows from green (new) to red (old) by table oldest issue age',
-        });
-      });
+    const meta = {
+      id: 'jira-age-highlighter',
+      name: 'Jira: Issue-Age Dynamic Highlighter',
+      version: '0.1',
+      updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Jira%20Age%20Dynamic%20Highlighter.user.js',
+      downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Jira%20Age%20Dynamic%20Highlighter.user.js',
+      description: 'Color-code Jira issue rows from green (new) to red (old) by table oldest issue age',
+    };
+    function _emit() {
+      document.dispatchEvent(new CustomEvent('fmhub:declareScript', { detail: JSON.stringify(meta) }));
     }
-    if (window.FireMonkeyHub) { _reg(window.FireMonkeyHub); }
-    else { document.addEventListener('fmhub:loaded', function(e) { _reg(e.detail); }, { once: true }); }
+    _emit();
+    document.addEventListener('fmhub:hubReady', _emit);
   })();
 })();
 

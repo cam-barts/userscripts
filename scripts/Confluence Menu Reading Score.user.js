@@ -448,22 +448,20 @@ Sentence Count: ${sentenceCount}
 		callback: toggleHighlighting,
 	});
 
+	// Hub integration: event-only protocol (cross-realm safe)
 	(function () {
-		function _reg(hub) {
-			hub = hub || window.FireMonkeyHub;
-			if (!hub) return;
-			hub.ready.then(function () {
-				hub.declareScript({
-					id: 'confluence-reading-score',
-					name: 'Confluence Menu: Reading Score',
-					version: '0.3',
-					updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Reading%20Score.user.js',
-					downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Reading%20Score.user.js',
-					description: 'Analyzes readability of Confluence page content with sentence highlighting',
-				});
-			});
+		const meta = {
+			id: 'confluence-reading-score',
+			name: 'Confluence Menu: Reading Score',
+			version: '0.3',
+			updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Reading%20Score.user.js',
+			downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Reading%20Score.user.js',
+			description: 'Analyzes readability of Confluence page content with sentence highlighting',
+		};
+		function _emit() {
+			document.dispatchEvent(new CustomEvent('fmhub:declareScript', { detail: JSON.stringify(meta) }));
 		}
-		if (window.FireMonkeyHub) { _reg(window.FireMonkeyHub); }
-		else { document.addEventListener('fmhub:loaded', function(e) { _reg(e.detail); }, { once: true }); }
+		_emit();
+		document.addEventListener('fmhub:hubReady', _emit);
 	})();
 })();

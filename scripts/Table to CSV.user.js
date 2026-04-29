@@ -243,7 +243,9 @@
 	});
 
 	// ──── Table detection & observation ────
+	let _hubActive = false;
 	function updateButtonVisibility() {
+		if (_hubActive) { btn.style.display = 'none'; return; }
 		const tables = document.querySelectorAll("table");
 		btn.style.display = tables.length > 0 ? "flex" : "none";
 	}
@@ -258,42 +260,82 @@
 		}
 	}).observe(document.body, { childList: true, subtree: true });
 
-	// ──── Hub integration ────
+	// ──── Hub integration (event-only protocol) ────
 	let _hubHandle;
 	(function () {
-		function _setup(hub) {
-			hub = hub || window.FireMonkeyHub;
-			if (!hub) return;
+		const TAG = '[fmhub:table-to-csv]';
+		function _log() {
+			if (window.__FMHUB_DEBUG__ === false) return;
+			try { console.log.apply(console, [TAG].concat([].slice.call(arguments))); } catch (e) {}
+		}
+
+		const _cmds = new Map();
+		const _scripts = [];
+
+		function _emit(t, p) {
+			document.dispatchEvent(new CustomEvent('fmhub:' + t, {
+				detail: JSON.stringify(p || {})
+			}));
+		}
+
+		document.addEventListener('fmhub:invoke', function (e) {
+			try {
+				const { id } = JSON.parse(e.detail || '{}');
+				const c = _cmds.get(id);
+				if (c && typeof c.cb === 'function') {
+					try { c.cb(); } catch (err) { console.error(TAG, err); }
+				}
+			} catch {}
+		});
+
+		function _emitAll() {
+			for (const [id, c] of _cmds) _emit('registerCommand', { id, ...c.meta });
+			for (const s of _scripts) _emit('declareScript', s);
+		}
+
+		document.addEventListener('fmhub:hubReady', function () {
+			_log('fmhub:hubReady — re-emitting');
+			_hubActive = true;
 			btn.style.display = 'none';
-			hub.ready.then(function () {
-				const tables = document.querySelectorAll('table');
-				_hubHandle = hub.registerCommand({
-					id: 'table-to-csv.export',
-					name: 'Export Table to CSV',
-					group: 'All Sites',
-					color: '#2563eb',
-					enabled: tables.length > 0,
-					callback: function () {
-						const ts = document.querySelectorAll('table');
-						if (!ts.length) return;
-						if (ts.length === 1) { downloadCsv(tableToCsv(ts[0]), 0); return; }
-						openPanel(ts);
-					},
-				});
-				hub.declareScript({
-					id: 'table-to-csv',
-					name: 'Table to CSV',
-					version: '0.2',
-					updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Table%20to%20CSV.user.js',
-					downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Table%20to%20CSV.user.js',
-					description: 'Detect tables on any page and download as CSV',
-				});
-			});
-		}
-		if (window.FireMonkeyHub) {
-			_setup(window.FireMonkeyHub);
-		} else {
-			document.addEventListener('fmhub:loaded', function(e) { _setup(e.detail); }, { once: true });
-		}
+			_emitAll();
+		});
+
+		const tables = document.querySelectorAll('table');
+		const cmdMeta = {
+			name: 'Export Table to CSV',
+			tooltip: '',
+			color: '#2563eb',
+			group: 'All Sites',
+			enabled: tables.length > 0,
+		};
+		_cmds.set('table-to-csv.export', {
+			cb: function () {
+				const ts = document.querySelectorAll('table');
+				if (!ts.length) return;
+				if (ts.length === 1) { downloadCsv(tableToCsv(ts[0]), 0); return; }
+				openPanel(ts);
+			},
+			meta: cmdMeta,
+		});
+		_emit('registerCommand', { id: 'table-to-csv.export', ...cmdMeta });
+
+		_hubHandle = {
+			setEnabled(val) {
+				const e = _cmds.get('table-to-csv.export');
+				if (e) e.meta.enabled = val;
+				_emit('setCommandEnabled', { id: 'table-to-csv.export', enabled: val });
+			},
+		};
+
+		const scriptMeta = {
+			id: 'table-to-csv',
+			name: 'Table to CSV',
+			version: '0.2',
+			updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Table%20to%20CSV.user.js',
+			downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Table%20to%20CSV.user.js',
+			description: 'Detect tables on any page and download as CSV',
+		};
+		_scripts.push(scriptMeta);
+		_emit('declareScript', scriptMeta);
 	})();
 })();
