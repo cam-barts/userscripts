@@ -243,6 +243,7 @@
           };
           await saveState(state);
           respond(id, true, state.scripts[scriptId]);
+          emit('stateUpdate', { scripts: state.scripts });
           break;
         }
 
