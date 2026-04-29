@@ -56,6 +56,13 @@ echo "New version: $NEW_VERSION"
 # Update version in the file
 if [[ "$FILE" == *.user.js ]]; then
   sed -i "s|^// @version.*|// @version      $NEW_VERSION|" "$FILE"
+
+  # Also bump any inline scriptMeta `version: '<CURRENT>'` literals so the
+  # version reported via fmhub:declareScript / fmhub:hubReady / fmhub:hello
+  # stays in sync with @version. Only replaces values that match the previous
+  # @version, so unrelated `version:` lines in the file body are untouched.
+  CURRENT_VERSION_REGEX=$(echo "$CURRENT_VERSION" | sed 's/[.[\*^$()+?{|]/\\&/g')
+  sed -i "s|version: '$CURRENT_VERSION_REGEX'|version: '$NEW_VERSION'|g" "$FILE"
 elif [[ "$FILE" == *.user.css ]]; then
   sed -i "s|^@version.*|@version     $NEW_VERSION|" "$FILE"
 fi

@@ -654,7 +654,7 @@
 		const scriptMeta = {
 			id: 'ai-writing-detector',
 			name: 'AI Writing Detector',
-			version: '0.2',
+			version: '0.7',
 			updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/AI%20Writing%20Detector.user.js',
 			downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/AI%20Writing%20Detector.user.js',
 			description: 'Highlights signs of AI-generated writing',

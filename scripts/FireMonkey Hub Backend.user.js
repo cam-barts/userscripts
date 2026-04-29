@@ -373,5 +373,5 @@
     setTimeout(() => checkUpdates(state), 3000);
   }
 
-  emit('hello', { version: '0.1' });
+  emit('hello', { version: '0.5' });
 })();

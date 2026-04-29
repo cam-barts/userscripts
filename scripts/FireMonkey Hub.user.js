@@ -712,7 +712,8 @@
 
   function _normalizeRawURL(url) {
     if (!url) return '';
-    return url.replace('/refs/heads/', '/');
+    const stripped = url.replace('/refs/heads/', '/');
+    try { return decodeURIComponent(stripped); } catch { return stripped; }
   }
 
   function _renderUpdates() {
@@ -978,7 +979,7 @@
 
   // Announce we're ready to accept registrations. Consumers that loaded
   // before us listen for this and re-emit their declarations.
-  _emit('hubReady', { version: '0.4' });
+  _emit('hubReady', { version: '0.6' });
   _dbg('dispatched fmhub:hubReady');
 
   _request('getState').then(state => {

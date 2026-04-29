@@ -119,7 +119,7 @@
     const meta = {
       id: 'jira-age-highlighter',
       name: 'Jira: Issue-Age Dynamic Highlighter',
-      version: '0.1',
+      version: '0.5',
       updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Jira%20Age%20Dynamic%20Highlighter.user.js',
       downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Jira%20Age%20Dynamic%20Highlighter.user.js',
       description: 'Color-code Jira issue rows from green (new) to red (old) by table oldest issue age',

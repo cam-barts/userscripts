@@ -62,7 +62,7 @@
     const meta = {
       id: 'confluence-count-words',
       name: 'Confluence Menu: Add Count Words',
-      version: '0.2',
+      version: '0.6',
       updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Add%20Count%20Words.user.js',
       downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Add%20Count%20Words.user.js',
       description: 'Count words on Confluence pages',

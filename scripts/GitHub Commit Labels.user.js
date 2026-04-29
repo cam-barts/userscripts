@@ -1772,7 +1772,7 @@ SOFTWARE.
         const scriptMeta = {
             id: 'github-commit-labels',
             name: 'GitHub Commit Labels',
-            version: '1.6.2',
+            version: '1.6.6',
             updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/GitHub%20Commit%20Labels.user.js',
             downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/GitHub%20Commit%20Labels.user.js',
             description: 'Enhances GitHub commits with beautiful labels for conventional commit types',

@@ -152,7 +152,7 @@
     const meta = {
       id: 'readwise-auto-tag-loop',
       name: 'Readwise Auto-Tag Loop (Simple Reload)',
-      version: '0.1',
+      version: '0.5',
       updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Readwise%20Auto-Tag%20Loop%20(Simple%20Reload).user.js',
       downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Readwise%20Auto-Tag%20Loop%20(Simple%20Reload).user.js',
       description: 'Invoke Ghostreader & apply "ta" tag, then reload queue page until empty',
