@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Confluence Menu Base
-// @version      0.6
+// @version      0.7
 // @description  Add command menu to Confluence pages
 // @author       cam-barts
 // @match        *://*/wiki/*
