@@ -1697,13 +1697,15 @@ SOFTWARE.
 
     // ──── Hub integration ────
     (function () {
-        function _setup() {
+        function _setup(hub) {
+            hub = hub || window.FireMonkeyHub;
+            if (!hub) return;
             _hubPresent = true;
-            window.FireMonkeyHub.ready.then(function () {
+            hub.ready.then(function () {
                 const existing = document.getElementById('commit-labels-buttons');
                 if (existing) existing.remove();
 
-                window.FireMonkeyHub.registerFeature({
+                hub.registerFeature({
                     id: 'github-commit-labels',
                     label: 'GitHub Commit Labels',
                     description: 'Adds conventional commit type labels to GitHub commit lists',
@@ -1720,14 +1722,14 @@ SOFTWARE.
                         document.querySelectorAll('.commit-label').forEach(function (l) { l.style.display = 'none'; });
                     },
                 });
-                window.FireMonkeyHub.registerCommand({
+                hub.registerCommand({
                     id: 'github-commit-labels.settings',
                     name: 'Commit Label Settings',
                     group: 'GitHub',
                     color: '#238636',
                     callback: createConfigWindow,
                 });
-                window.FireMonkeyHub.declareScript({
+                hub.declareScript({
                     id: 'github-commit-labels',
                     name: 'GitHub Commit Labels',
                     version: '1.6.2',
@@ -1738,10 +1740,10 @@ SOFTWARE.
                 });
             });
         }
-        if (typeof window.FireMonkeyHub !== 'undefined') {
-            _setup();
+        if (window.FireMonkeyHub) {
+            _setup(window.FireMonkeyHub);
         } else {
-            document.addEventListener('fmhub:loaded', _setup, { once: true });
+            document.addEventListener('fmhub:loaded', function(e) { _setup(e.detail); }, { once: true });
         }
     })();
 })();

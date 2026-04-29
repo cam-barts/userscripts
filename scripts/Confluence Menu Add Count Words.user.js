@@ -58,9 +58,11 @@
   });
 
   (function () {
-    function _reg() {
-      window.FireMonkeyHub.ready.then(function () {
-        window.FireMonkeyHub.declareScript({
+    function _reg(hub) {
+      hub = hub || window.FireMonkeyHub;
+      if (!hub) return;
+      hub.ready.then(function () {
+        hub.declareScript({
           id: 'confluence-count-words',
           name: 'Confluence Menu: Add Count Words',
           version: '0.2',
@@ -70,7 +72,7 @@
         });
       });
     }
-    if (typeof window.FireMonkeyHub !== 'undefined') { _reg(); }
-    else { document.addEventListener('fmhub:loaded', _reg, { once: true }); }
+    if (window.FireMonkeyHub) { _reg(window.FireMonkeyHub); }
+    else { document.addEventListener('fmhub:loaded', function(e) { _reg(e.detail); }, { once: true }); }
   })();
 })();

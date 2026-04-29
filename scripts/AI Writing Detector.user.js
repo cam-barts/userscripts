@@ -571,11 +571,13 @@
 	// ──── Initialize ────
 	(function () {
 		var _done = false;
-		function _hubSetup() {
+		function _hubSetup(hub) {
 			if (_done) return;
+			hub = hub || window.FireMonkeyHub;
+			if (!hub) return;
 			_done = true;
-			window.FireMonkeyHub.ready.then(function () {
-				window.FireMonkeyHub.registerFeature({
+			hub.ready.then(function () {
+				hub.registerFeature({
 					id: 'ai-writing-detector',
 					label: 'AI Writing Detector',
 					description: 'Highlights AI-generated writing patterns',
@@ -583,14 +585,14 @@
 					defaultEnabled: true,
 					onDisable: function () { if (highlightingEnabled) removeHighlights(); },
 				});
-				window.FireMonkeyHub.registerCommand({
+				hub.registerCommand({
 					id: 'ai-writing-detector.toggle',
 					name: 'AI: Toggle Highlighting',
 					group: 'All Sites',
 					color: '#1B1D23',
 					callback: toggleHighlighting,
 				});
-				window.FireMonkeyHub.declareScript({
+				hub.declareScript({
 					id: 'ai-writing-detector',
 					name: 'AI Writing Detector',
 					version: '0.2',
@@ -600,10 +602,10 @@
 				});
 			});
 		}
-		if (typeof window.FireMonkeyHub !== 'undefined') {
-			_hubSetup();
+		if (window.FireMonkeyHub) {
+			_hubSetup(window.FireMonkeyHub);
 		} else {
-			document.addEventListener('fmhub:loaded', _hubSetup, { once: true });
+			document.addEventListener('fmhub:loaded', function(e) { _hubSetup(e.detail); }, { once: true });
 			setTimeout(function () {
 				if (!_done) {
 					if (document.readyState === 'loading') {

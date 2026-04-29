@@ -190,8 +190,9 @@
     },
   };
 
-  // Signal to consumers that the Hub API is ready
-  document.dispatchEvent(new CustomEvent('fmhub:loaded'));
+  // Signal to consumers that the Hub API is ready, passing the hub as detail
+  // to bypass potential per-script window sandbox isolation in FireMonkey
+  document.dispatchEvent(new CustomEvent('fmhub:loaded', { detail: window.FireMonkeyHub }));
 
   // ── UI ─────────────────────────────────────────────────────────────
 

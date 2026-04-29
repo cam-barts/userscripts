@@ -261,11 +261,13 @@
 	// ──── Hub integration ────
 	let _hubHandle;
 	(function () {
-		function _setup() {
+		function _setup(hub) {
+			hub = hub || window.FireMonkeyHub;
+			if (!hub) return;
 			btn.style.display = 'none';
-			window.FireMonkeyHub.ready.then(function () {
+			hub.ready.then(function () {
 				const tables = document.querySelectorAll('table');
-				_hubHandle = window.FireMonkeyHub.registerCommand({
+				_hubHandle = hub.registerCommand({
 					id: 'table-to-csv.export',
 					name: 'Export Table to CSV',
 					group: 'All Sites',
@@ -278,7 +280,7 @@
 						openPanel(ts);
 					},
 				});
-				window.FireMonkeyHub.declareScript({
+				hub.declareScript({
 					id: 'table-to-csv',
 					name: 'Table to CSV',
 					version: '0.2',
@@ -288,10 +290,10 @@
 				});
 			});
 		}
-		if (typeof window.FireMonkeyHub !== 'undefined') {
-			_setup();
+		if (window.FireMonkeyHub) {
+			_setup(window.FireMonkeyHub);
 		} else {
-			document.addEventListener('fmhub:loaded', _setup, { once: true });
+			document.addEventListener('fmhub:loaded', function(e) { _setup(e.detail); }, { once: true });
 		}
 	})();
 })();

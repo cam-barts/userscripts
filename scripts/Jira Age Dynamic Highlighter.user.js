@@ -115,9 +115,11 @@
   window.addEventListener("load", queueHighlight);
 
   (function () {
-    function _reg() {
-      window.FireMonkeyHub.ready.then(function () {
-        window.FireMonkeyHub.declareScript({
+    function _reg(hub) {
+      hub = hub || window.FireMonkeyHub;
+      if (!hub) return;
+      hub.ready.then(function () {
+        hub.declareScript({
           id: 'jira-age-highlighter',
           name: 'Jira: Issue-Age Dynamic Highlighter',
           version: '0.1',
@@ -127,8 +129,8 @@
         });
       });
     }
-    if (typeof window.FireMonkeyHub !== 'undefined') { _reg(); }
-    else { document.addEventListener('fmhub:loaded', _reg, { once: true }); }
+    if (window.FireMonkeyHub) { _reg(window.FireMonkeyHub); }
+    else { document.addEventListener('fmhub:loaded', function(e) { _reg(e.detail); }, { once: true }); }
   })();
 })();
 

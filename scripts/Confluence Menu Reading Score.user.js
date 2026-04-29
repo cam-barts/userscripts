@@ -449,9 +449,11 @@ Sentence Count: ${sentenceCount}
 	});
 
 	(function () {
-		function _reg() {
-			window.FireMonkeyHub.ready.then(function () {
-				window.FireMonkeyHub.declareScript({
+		function _reg(hub) {
+			hub = hub || window.FireMonkeyHub;
+			if (!hub) return;
+			hub.ready.then(function () {
+				hub.declareScript({
 					id: 'confluence-reading-score',
 					name: 'Confluence Menu: Reading Score',
 					version: '0.3',
@@ -461,7 +463,7 @@ Sentence Count: ${sentenceCount}
 				});
 			});
 		}
-		if (typeof window.FireMonkeyHub !== 'undefined') { _reg(); }
-		else { document.addEventListener('fmhub:loaded', _reg, { once: true }); }
+		if (window.FireMonkeyHub) { _reg(window.FireMonkeyHub); }
+		else { document.addEventListener('fmhub:loaded', function(e) { _reg(e.detail); }, { once: true }); }
 	})();
 })();
