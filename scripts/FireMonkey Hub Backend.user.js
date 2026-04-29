@@ -231,8 +231,71 @@
     }
   }
 
+  // Manually flag a repo script as installed without requiring it to declare
+  // itself first. Fetches the script header to extract @name, @version, and
+  // any inline scriptMeta id so the entry matches what the script will later
+  // declare on its own. If the fetch fails, falls back to path-derived data.
+  async function markInstalledOne(state, path, providedURL) {
+    const repoBase = state.repo.url.replace('https://github.com/', '').replace(/\/$/, '');
+    const branch = state.repo.branch || 'main';
+    const downloadURL = providedURL || `https://raw.githubusercontent.com/${repoBase}/${branch}/${path}`;
+
+    let name = path.split('/').pop().replace(/\.user\.js$/, '');
+    let version = '0';
+    let scriptId = `manual:${path}`;
+    let description = '';
+
+    try {
+      const r = await gmFetch(downloadURL, { headers: { Range: 'bytes=0-4095' } });
+      const text = getResponseText(r);
+      const nameMatch = text.match(/^\/\/ @name\s+(.+)/m);
+      const versionMatch = text.match(/^\/\/ @version\s+(\S+)/m);
+      const descMatch = text.match(/^\/\/ @description\s+(.+)/m);
+      const idMatch = text.match(/id:\s*['"]([^'"]+)['"]/);
+      if (nameMatch) name = nameMatch[1].trim();
+      if (versionMatch) version = versionMatch[1].trim();
+      if (descMatch) description = descMatch[1].trim();
+      if (idMatch) scriptId = idMatch[1];
+    } catch { /* fall back to defaults */ }
+
+    const existing = state.scripts[scriptId];
+    state.scripts[scriptId] = {
+      name,
+      version,
+      updateURL: downloadURL,
+      downloadURL,
+      description,
+      upstreamURL: existing?.upstreamURL || null,
+      lastSeen: new Date().toISOString(),
+      latestKnown: existing?.latestKnown || null,
+      dismissedUpdates: existing?.dismissedUpdates || [],
+    };
+    return state.scripts[scriptId];
+  }
+
   const state = await loadState();
   _dbg('state loaded, scripts=', Object.keys(state.scripts).length, 'features=', Object.keys(state.features).length, 'knownPaths=', state.repo.knownPaths.length);
+
+  // Self-declare so the Backend appears as installed in Updates/Discover.
+  // Backend can't dispatch through the Hub registration flow; it owns state
+  // directly, so just upsert into state.scripts.
+  {
+    const selfId = 'firemonkey-hub-backend';
+    const selfURL = 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/FireMonkey%20Hub%20Backend.user.js';
+    const existing = state.scripts[selfId];
+    state.scripts[selfId] = {
+      name: 'FireMonkey Hub Backend',
+      version: '0.5',
+      updateURL: selfURL,
+      downloadURL: selfURL,
+      description: 'Persistent storage and network backend for FireMonkey Hub',
+      upstreamURL: null,
+      lastSeen: new Date().toISOString(),
+      latestKnown: existing?.latestKnown || null,
+      dismissedUpdates: existing?.dismissedUpdates || [],
+    };
+    await saveState(state);
+  }
 
   document.addEventListener('fmhub:request', async (e) => {
     let req;
@@ -332,6 +395,27 @@
             }
           }
           respond(id, true, null);
+          break;
+        }
+
+        case 'markInstalled': {
+          const entry = await markInstalledOne(state, payload.path, payload.downloadURL);
+          await saveState(state);
+          respond(id, true, entry);
+          emit('stateUpdate', { scripts: state.scripts });
+          break;
+        }
+
+        case 'markAllInstalled': {
+          const paths = Array.isArray(payload.paths) ? payload.paths : [];
+          const entries = [];
+          for (const p of paths) {
+            try { entries.push(await markInstalledOne(state, p, null)); }
+            catch (err) { _dbg('markInstalled failed for', p, err && err.message); }
+          }
+          await saveState(state);
+          respond(id, true, { count: entries.length });
+          emit('stateUpdate', { scripts: state.scripts });
           break;
         }
 

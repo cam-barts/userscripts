@@ -842,6 +842,29 @@
       _contentEl.appendChild(el);
       return;
     }
+
+    const bulkRow = document.createElement('div');
+    bulkRow.className = 'upd-hdr';
+    const bulkInfo = document.createElement('span');
+    bulkInfo.className = 'upd-hdr-ts';
+    bulkInfo.textContent = `${discovered.length} undeclared`;
+    const markAllBtn = document.createElement('button');
+    markAllBtn.className = 'sbtn';
+    markAllBtn.textContent = 'Mark all installed';
+    markAllBtn.addEventListener('click', async () => {
+      if (!_backendAlive) return;
+      markAllBtn.disabled = true;
+      markAllBtn.textContent = '…';
+      try { await _request('markAllInstalled', { paths: discovered }); }
+      catch { }
+      markAllBtn.disabled = false;
+      markAllBtn.textContent = 'Mark all installed';
+      _renderActiveTab();
+    });
+    bulkRow.appendChild(bulkInfo);
+    bulkRow.appendChild(markAllBtn);
+    _contentEl.appendChild(bulkRow);
+
     for (const path of discovered) {
       const downloadURL = `https://raw.githubusercontent.com/${repoBase}/${branch}/${path}`;
       const name = path.split('/').pop().replace('.user.js', '');
@@ -858,6 +881,18 @@
       installBtn.addEventListener('click', () => {
         if (_backendAlive) _request('openInTab', { url: downloadURL }).catch(() => {});
       });
+      const markBtn = document.createElement('button');
+      markBtn.className = 'sbtn';
+      markBtn.textContent = 'Already installed';
+      markBtn.title = 'I already have this — track it without re-installing';
+      markBtn.addEventListener('click', async () => {
+        if (!_backendAlive) return;
+        markBtn.disabled = true;
+        markBtn.textContent = '…';
+        try { await _request('markInstalled', { path, downloadURL }); }
+        catch { }
+        _renderActiveTab();
+      });
       const ignoreBtn = document.createElement('button');
       ignoreBtn.className = 'sbtn';
       ignoreBtn.textContent = 'Ignore';
@@ -870,6 +905,7 @@
         _renderActiveTab();
       });
       acts.appendChild(installBtn);
+      acts.appendChild(markBtn);
       acts.appendChild(ignoreBtn);
       row.appendChild(nameEl);
       row.appendChild(acts);
@@ -989,6 +1025,15 @@
     _applyStoredPosition();
     _updateBadge();
     _readyResolve();
+    // Self-declare so the Hub appears as installed in Updates/Discover.
+    _internalDeclareScript({
+      id: 'firemonkey-hub',
+      name: 'FireMonkey Hub',
+      version: '0.6',
+      updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/FireMonkey%20Hub.user.js',
+      downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/FireMonkey%20Hub.user.js',
+      description: 'Unified floating action hub for all FireMonkey userscripts',
+    });
     // Re-broadcast feature state for already-registered features now that
     // we know the persisted enabled state.
     for (const [id] of _features) _broadcastFeature(id);
