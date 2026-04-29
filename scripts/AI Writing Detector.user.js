@@ -570,13 +570,21 @@
 
 	// ──── Initialize ────
 	(function () {
+		var TAG = '[fmhub:ai-detector]';
+		function _log() {
+			if (window.__FMHUB_DEBUG__ === false) return;
+			try { console.log.apply(console, [TAG].concat([].slice.call(arguments))); } catch (e) {}
+		}
+		_log('script loaded; window.FireMonkeyHub at start:', !!window.FireMonkeyHub, 'readyState=', document.readyState);
 		var _done = false;
 		function _hubSetup(hub) {
 			if (_done) return;
 			hub = hub || window.FireMonkeyHub;
-			if (!hub) return;
+			if (!hub) { _log('_hubSetup called but no hub'); return; }
 			_done = true;
+			_log('_hubSetup proceeding, ready=', typeof hub.ready);
 			hub.ready.then(function () {
+				_log('hub ready resolved — registering feature/command/script');
 				hub.registerFeature({
 					id: 'ai-writing-detector',
 					label: 'AI Writing Detector',
@@ -605,9 +613,11 @@
 		if (window.FireMonkeyHub) {
 			_hubSetup(window.FireMonkeyHub);
 		} else {
-			document.addEventListener('fmhub:loaded', function(e) { _hubSetup(e.detail); }, { once: true });
+			_log('hub not present, waiting for fmhub:loaded event');
+			document.addEventListener('fmhub:loaded', function(e) { _log('fmhub:loaded received, e.detail truthy?', !!e.detail); _hubSetup(e.detail); }, { once: true });
 			setTimeout(function () {
 				if (!_done) {
+					_log('2s fallback fired — hub never reached, building standalone toggle button');
 					if (document.readyState === 'loading') {
 						document.addEventListener('DOMContentLoaded', createToggleButton);
 					} else {

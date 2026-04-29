@@ -88,9 +88,16 @@
 
   // Declare this script to the Hub for update tracking
   (function () {
+    var TAG = '[fmhub:confluence-base]';
+    function _log() {
+      if (window.__FMHUB_DEBUG__ === false) return;
+      try { console.log.apply(console, [TAG].concat([].slice.call(arguments))); } catch (e) {}
+    }
+    _log('script loaded; window.FireMonkeyHub at start:', !!window.FireMonkeyHub);
     function _reg(hub) {
       hub = hub || window.FireMonkeyHub;
-      if (!hub) return;
+      if (!hub) { _log('_reg called but no hub available'); return; }
+      _log('registering with hub');
       hub.declareScript({
         id: 'confluence-menu-base',
         name: 'Confluence Menu Base',
@@ -101,6 +108,9 @@
       });
     }
     if (window.FireMonkeyHub) { _reg(window.FireMonkeyHub); }
-    else { document.addEventListener('fmhub:loaded', function(e) { _reg(e.detail); }, { once: true }); }
+    else {
+      _log('hub not present, waiting for fmhub:loaded event');
+      document.addEventListener('fmhub:loaded', function(e) { _log('fmhub:loaded received'); _reg(e.detail); }, { once: true });
+    }
   })();
 })();

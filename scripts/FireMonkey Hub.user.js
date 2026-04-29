@@ -13,6 +13,15 @@
 (function () {
   'use strict';
 
+  // ── Debug Logger ───────────────────────────────────────────────────
+  // Toggle: set window.__FMHUB_DEBUG__ = false in the console to silence.
+  if (typeof window.__FMHUB_DEBUG__ === 'undefined') window.__FMHUB_DEBUG__ = true;
+  function _dbg(...args) {
+    if (!window.__FMHUB_DEBUG__) return;
+    try { console.log('[fmhub:hub]', ...args); } catch { }
+  }
+  _dbg('script loaded, version 0.3, location=', location.href);
+
   // ── Bridge ─────────────────────────────────────────────────────────
 
   let _reqId = 0;
@@ -20,21 +29,27 @@
   let _readyResolve;
   const _ready = new Promise(r => (_readyResolve = r));
   let _stateCache = null;
+  // In-memory mirror of state.scripts so the UI works before/without backend.
+  // Backend's persisted state is the source of truth when it's online.
+  const _localScripts = {};
 
   function _request(type, payload = {}) {
     const id = ++_reqId;
+    _dbg('_request →', type, 'id=', id);
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         document.removeEventListener('fmhub:response:' + id, handler);
+        _dbg('_request TIMEOUT', type, 'id=', id);
         reject(new Error(`fmhub timeout: ${type}`));
       }, 8000);
       function handler(e) {
         clearTimeout(timer);
         try {
           const { ok, data, error } = JSON.parse(e.detail);
+          _dbg('_request ←', type, 'id=', id, 'ok=', ok, error ? ('err=' + error) : '');
           if (ok) resolve(data);
           else reject(new Error(error || 'request failed'));
-        } catch { reject(new Error('parse error')); }
+        } catch (err) { _dbg('_request parse error', type, err); reject(new Error('parse error')); }
       }
       document.addEventListener('fmhub:response:' + id, handler, { once: true });
       document.dispatchEvent(new CustomEvent('fmhub:request', {
@@ -80,6 +95,7 @@
 
     registerCommand(config) {
       if (!config.id) { console.warn('[fmhub] registerCommand missing id'); return { unregister() {}, setEnabled() {} }; }
+      _dbg('registerCommand', config.id, 'group=', config.group || '(none)');
       const entry = {
         name: config.name || config.id,
         tooltip: config.tooltip || '',
@@ -98,6 +114,7 @@
 
     registerFeature(config) {
       if (!config.id) { console.warn('[fmhub] registerFeature missing id'); return { isEnabled: () => true, setEnabled: async () => {}, onChange: () => () => {} }; }
+      _dbg('registerFeature', config.id, 'scope=', config.scope || 'global', 'defaultEnabled=', config.defaultEnabled !== false);
       const listeners = [];
       const entry = {
         label: config.label || config.id,
@@ -146,6 +163,20 @@
 
     declareScript(config) {
       if (!config.id) return;
+      _dbg('declareScript', config.id, 'v' + config.version, 'downloadURL=', config.downloadURL);
+      // Mirror locally so the UI shows declared scripts even when the backend
+      // is offline or the handshake hasn't completed yet.
+      _localScripts[config.id] = {
+        name: config.name,
+        version: config.version,
+        updateURL: config.updateURL || '',
+        downloadURL: config.downloadURL || '',
+        description: config.description || '',
+        upstreamURL: config.upstreamURL || null,
+        lastSeen: new Date().toISOString(),
+        latestKnown: _localScripts[config.id]?.latestKnown || null,
+        dismissedUpdates: _localScripts[config.id]?.dismissedUpdates || [],
+      };
       _ready.then(() => {
         if (_backendAlive) {
           _request('declareScript', {
@@ -156,8 +187,11 @@
             downloadURL: config.downloadURL,
             description: config.description || '',
             upstreamURL: config.upstreamURL || null,
-          }).catch(() => {});
+          }).catch((err) => { _dbg('declareScript backend failed', config.id, err); });
+        } else {
+          _dbg('declareScript: backend not alive, kept in _localScripts only', config.id);
         }
+        _renderActiveTab();
       });
     },
 
@@ -192,7 +226,30 @@
 
   // Signal to consumers that the Hub API is ready, passing the hub as detail
   // to bypass potential per-script window sandbox isolation in FireMonkey
+  _dbg('dispatching fmhub:loaded (window.FireMonkeyHub set)');
   document.dispatchEvent(new CustomEvent('fmhub:loaded', { detail: window.FireMonkeyHub }));
+
+  // Console-accessible diagnostic helper — run window.fmhubDiag() in the
+  // browser console at any time to dump the current Hub state.
+  window.fmhubDiag = function () {
+    const out = {
+      version: '0.3',
+      backendAlive: _backendAlive,
+      stateCacheLoaded: !!_stateCache,
+      commandCount: _commands.size,
+      commandIds: [..._commands.keys()],
+      featureCount: _features.size,
+      featureIds: [..._features.keys()],
+      localScriptIds: Object.keys(_localScripts),
+      backendScriptIds: Object.keys(_stateCache?.scripts || {}),
+      knownPaths: _stateCache?.repo?.knownPaths || [],
+      ignored: _stateCache?.repo?.ignored || [],
+      panelOpen: _panelOpen,
+      activeTab: TABS[_activeTab],
+    };
+    console.log('[fmhub:diag]', out);
+    return out;
+  };
 
   // ── UI ─────────────────────────────────────────────────────────────
 
@@ -630,6 +687,25 @@
     return wrap;
   }
 
+  // Merge backend-persisted scripts with the in-memory mirror so the panel
+  // renders something even before the backend handshake completes.
+  function _allDeclaredScripts() {
+    const merged = { ..._localScripts };
+    const remote = _stateCache?.scripts || {};
+    for (const [id, s] of Object.entries(remote)) {
+      merged[id] = { ...(merged[id] || {}), ...s };
+    }
+    return merged;
+  }
+
+  // Normalize raw.githubusercontent URLs so '/refs/heads/main/' and '/main/'
+  // forms compare equal — GitHub's API returns the short form, but both
+  // are valid raw URLs.
+  function _normalizeRawURL(url) {
+    if (!url) return '';
+    return url.replace('/refs/heads/', '/');
+  }
+
   function _renderUpdates() {
     const hdr = document.createElement('div');
     hdr.className = 'upd-hdr';
@@ -656,7 +732,7 @@
     hdr.appendChild(checkBtn);
     _contentEl.appendChild(hdr);
 
-    const scripts = Object.entries(_stateCache?.scripts || {});
+    const scripts = Object.entries(_allDeclaredScripts());
     if (!scripts.length) {
       const el = document.createElement('div');
       el.className = 'empty';
@@ -738,16 +814,25 @@
     hdr.appendChild(checkBtn);
     _contentEl.appendChild(hdr);
 
-    const installedURLs = new Set(Object.values(_stateCache?.scripts || {}).map(s => s.downloadURL));
+    const allDeclared = _allDeclaredScripts();
+    const installedURLs = new Set(
+      Object.values(allDeclared).map(s => _normalizeRawURL(s.downloadURL)).filter(Boolean)
+    );
+    _dbg('discover: installedURLs', [...installedURLs]);
     const ignored = new Set(_stateCache?.repo?.ignored || []);
     const knownPaths = _stateCache?.repo?.knownPaths || [];
-    const allScripts = _stateCache?.repo?.knownPaths || [];
+    const repoBaseFilter = (_stateCache?.repo?.url || '').replace('https://github.com/', '');
+    const branchFilter = _stateCache?.repo?.branch || 'main';
 
     // Only show scripts that are in knownPaths but not installed and not ignored
     const discovered = knownPaths.filter(path => {
       if (ignored.has(path)) return false;
-      const downloadURL = `https://raw.githubusercontent.com/${(_stateCache?.repo?.url || '').replace('https://github.com/', '')}/refs/heads/${_stateCache?.repo?.branch || 'main'}/${path}`;
-      return !installedURLs.has(downloadURL);
+      const downloadURL = _normalizeRawURL(
+        `https://raw.githubusercontent.com/${repoBaseFilter}/${branchFilter}/${path}`
+      );
+      const isInstalled = installedURLs.has(downloadURL);
+      _dbg('discover filter', path, 'url=', downloadURL, 'installed=', isInstalled);
+      return !isInstalled;
     });
 
     if (!discovered.length) {
@@ -760,7 +845,7 @@
     const repoBase = (_stateCache?.repo?.url || '').replace('https://github.com/', '');
     const branch = _stateCache?.repo?.branch || 'main';
     for (const path of discovered) {
-      const downloadURL = `https://raw.githubusercontent.com/${repoBase}/refs/heads/${branch}/${path}`;
+      const downloadURL = `https://raw.githubusercontent.com/${repoBase}/${branch}/${path}`;
       const name = path.split('/').pop().replace('.user.js', '');
       const row = document.createElement('div');
       row.className = 'disc';
@@ -856,10 +941,12 @@
   // ── Backend event listeners ─────────────────────────────────────────
 
   document.addEventListener('fmhub:hello', () => {
+    _dbg('fmhub:hello received → backend alive');
     _backendAlive = true;
   });
 
   document.addEventListener('fmhub:stateUpdate', (e) => {
+    _dbg('fmhub:stateUpdate received');
     try {
       const update = JSON.parse(e.detail);
       if (!_stateCache) _stateCache = { features: {}, scripts: {}, repo: {}, ui: {}, rateLimit: {} };
@@ -900,21 +987,27 @@
   // ── Init ────────────────────────────────────────────────────────────
 
   _createUI();
+  _dbg('UI created, requesting state from backend');
 
   // Request state from backend; timeout gracefully
   _request('getState').then(state => {
+    _dbg('getState resolved, scripts=', Object.keys(state?.scripts || {}).length, 'features=', Object.keys(state?.features || {}).length);
     _stateCache = state;
     _backendAlive = true;
     _applyStoredPosition();
     _updateBadge();
     _readyResolve();
     _renderActiveTab();
-  }).catch(() => {
+  }).catch((err) => {
+    _dbg('getState FAILED → backend not reachable:', err && err.message);
     _backendAlive = false;
     _readyResolve();
     _renderActiveTab();
   });
 
   // Timeout fallback: resolve ready even without backend
-  setTimeout(() => { _readyResolve(); }, 3000);
+  setTimeout(() => {
+    if (!_backendAlive) _dbg('ready timeout — backend never responded');
+    _readyResolve();
+  }, 3000);
 })();

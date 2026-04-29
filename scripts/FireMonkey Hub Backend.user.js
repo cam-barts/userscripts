@@ -18,6 +18,17 @@
 (async function () {
   'use strict';
 
+  // Debug logger — toggle via window.__FMHUB_DEBUG__ in console.
+  // Backend runs in isolated context; flag-check has to use unsafeWindow.
+  function _dbg(...args) {
+    try {
+      const flag = (typeof unsafeWindow !== 'undefined') ? unsafeWindow.__FMHUB_DEBUG__ : true;
+      if (flag === false) return;
+      console.log('[fmhub:backend]', ...args);
+    } catch { try { console.log('[fmhub:backend]', ...args); } catch { } }
+  }
+  _dbg('script starting at document-start, location=', location.href);
+
   const STATE_KEY = 'fmhub.state.v1';
 
   const DEFAULT_STATE = {
@@ -59,12 +70,18 @@
   // Dispatch events to page context using unsafeWindow bridge
   function emit(type, data) {
     const detail = JSON.stringify(data ?? {});
+    let usedUnsafe = false;
     try {
       unsafeWindow.document.dispatchEvent(
         new unsafeWindow.CustomEvent('fmhub:' + type, { detail })
       );
-    } catch {
+      usedUnsafe = true;
+    } catch (err) {
+      _dbg('emit unsafeWindow path failed for', type, '— falling back', err && err.message);
       document.dispatchEvent(new CustomEvent('fmhub:' + type, { detail }));
+    }
+    if (type !== 'response:' + (type.split(':')[1] || '') || !type.startsWith('response:')) {
+      _dbg('emit', type, usedUnsafe ? '(via unsafeWindow)' : '(fallback)');
     }
   }
 
@@ -215,11 +232,13 @@
   }
 
   const state = await loadState();
+  _dbg('state loaded, scripts=', Object.keys(state.scripts).length, 'features=', Object.keys(state.features).length, 'knownPaths=', state.repo.knownPaths.length);
 
   document.addEventListener('fmhub:request', async (e) => {
     let req;
-    try { req = JSON.parse(e.detail); } catch { return; }
+    try { req = JSON.parse(e.detail); } catch (err) { _dbg('bad request payload', err); return; }
     const { id, type, payload = {} } = req;
+    _dbg('request', type, 'id=', id);
 
     try {
       switch (type) {
