@@ -190,6 +190,9 @@
     },
   };
 
+  // Signal to consumers that the Hub API is ready
+  document.dispatchEvent(new CustomEvent('fmhub:loaded'));
+
   // ── UI ─────────────────────────────────────────────────────────────
 
   let _host, _shadow, _btnEl, _panelEl, _contentEl;

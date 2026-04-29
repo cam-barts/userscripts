@@ -57,8 +57,8 @@
     callback: countWords
   });
 
-  setTimeout(function () {
-    if (typeof window.FireMonkeyHub !== 'undefined') {
+  (function () {
+    function _reg() {
       window.FireMonkeyHub.ready.then(function () {
         window.FireMonkeyHub.declareScript({
           id: 'confluence-count-words',
@@ -70,5 +70,7 @@
         });
       });
     }
-  }, 0);
+    if (typeof window.FireMonkeyHub !== 'undefined') { _reg(); }
+    else { document.addEventListener('fmhub:loaded', _reg, { once: true }); }
+  })();
 })();

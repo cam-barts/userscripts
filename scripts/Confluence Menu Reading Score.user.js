@@ -448,8 +448,8 @@ Sentence Count: ${sentenceCount}
 		callback: toggleHighlighting,
 	});
 
-	setTimeout(function () {
-		if (typeof window.FireMonkeyHub !== 'undefined') {
+	(function () {
+		function _reg() {
 			window.FireMonkeyHub.ready.then(function () {
 				window.FireMonkeyHub.declareScript({
 					id: 'confluence-reading-score',
@@ -461,5 +461,7 @@ Sentence Count: ${sentenceCount}
 				});
 			});
 		}
-	}, 0);
+		if (typeof window.FireMonkeyHub !== 'undefined') { _reg(); }
+		else { document.addEventListener('fmhub:loaded', _reg, { once: true }); }
+	})();
 })();

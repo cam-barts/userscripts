@@ -1696,11 +1696,10 @@ SOFTWARE.
     }, 100));
 
     // ──── Hub integration ────
-    setTimeout(function () {
-        if (typeof window.FireMonkeyHub !== 'undefined') {
+    (function () {
+        function _setup() {
             _hubPresent = true;
             window.FireMonkeyHub.ready.then(function () {
-                // Remove standalone floating buttons if they were created before Hub detected
                 const existing = document.getElementById('commit-labels-buttons');
                 if (existing) existing.remove();
 
@@ -1739,5 +1738,10 @@ SOFTWARE.
                 });
             });
         }
-    }, 0);
+        if (typeof window.FireMonkeyHub !== 'undefined') {
+            _setup();
+        } else {
+            document.addEventListener('fmhub:loaded', _setup, { once: true });
+        }
+    })();
 })();

@@ -114,8 +114,8 @@
   // Run highlighting once on page load
   window.addEventListener("load", queueHighlight);
 
-  setTimeout(function () {
-    if (typeof window.FireMonkeyHub !== 'undefined') {
+  (function () {
+    function _reg() {
       window.FireMonkeyHub.ready.then(function () {
         window.FireMonkeyHub.declareScript({
           id: 'jira-age-highlighter',
@@ -127,6 +127,8 @@
         });
       });
     }
-  }, 0);
+    if (typeof window.FireMonkeyHub !== 'undefined') { _reg(); }
+    else { document.addEventListener('fmhub:loaded', _reg, { once: true }); }
+  })();
 })();
 

@@ -569,8 +569,11 @@
 	}
 
 	// ──── Initialize ────
-	setTimeout(function () {
-		if (typeof window.FireMonkeyHub !== 'undefined') {
+	(function () {
+		var _done = false;
+		function _hubSetup() {
+			if (_done) return;
+			_done = true;
 			window.FireMonkeyHub.ready.then(function () {
 				window.FireMonkeyHub.registerFeature({
 					id: 'ai-writing-detector',
@@ -596,12 +599,20 @@
 					description: 'Highlights signs of AI-generated writing',
 				});
 			});
-		} else {
-			if (document.readyState === 'loading') {
-				document.addEventListener('DOMContentLoaded', createToggleButton);
-			} else {
-				createToggleButton();
-			}
 		}
-	}, 0);
+		if (typeof window.FireMonkeyHub !== 'undefined') {
+			_hubSetup();
+		} else {
+			document.addEventListener('fmhub:loaded', _hubSetup, { once: true });
+			setTimeout(function () {
+				if (!_done) {
+					if (document.readyState === 'loading') {
+						document.addEventListener('DOMContentLoaded', createToggleButton);
+					} else {
+						createToggleButton();
+					}
+				}
+			}, 2000);
+		}
+	})();
 })();

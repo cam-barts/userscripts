@@ -87,8 +87,8 @@
   };
 
   // Declare this script to the Hub for update tracking
-  setTimeout(function () {
-    if (typeof window.FireMonkeyHub !== 'undefined') {
+  (function () {
+    function _reg() {
       window.FireMonkeyHub.declareScript({
         id: 'confluence-menu-base',
         name: 'Confluence Menu Base',
@@ -98,5 +98,7 @@
         description: 'Add command menu to Confluence pages',
       });
     }
-  }, 0);
+    if (typeof window.FireMonkeyHub !== 'undefined') { _reg(); }
+    else { document.addEventListener('fmhub:loaded', _reg, { once: true }); }
+  })();
 })();

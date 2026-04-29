@@ -260,9 +260,9 @@
 
 	// ──── Hub integration ────
 	let _hubHandle;
-	setTimeout(function () {
-		if (typeof window.FireMonkeyHub !== 'undefined') {
-			btn.style.display = 'none'; // hide standalone button when Hub present
+	(function () {
+		function _setup() {
+			btn.style.display = 'none';
 			window.FireMonkeyHub.ready.then(function () {
 				const tables = document.querySelectorAll('table');
 				_hubHandle = window.FireMonkeyHub.registerCommand({
@@ -288,5 +288,10 @@
 				});
 			});
 		}
-	}, 0);
+		if (typeof window.FireMonkeyHub !== 'undefined') {
+			_setup();
+		} else {
+			document.addEventListener('fmhub:loaded', _setup, { once: true });
+		}
+	})();
 })();
