@@ -569,9 +569,39 @@
 	}
 
 	// ──── Initialize ────
-	if (document.readyState === "loading") {
-		document.addEventListener("DOMContentLoaded", createToggleButton);
-	} else {
-		createToggleButton();
-	}
+	setTimeout(function () {
+		if (typeof window.FireMonkeyHub !== 'undefined') {
+			window.FireMonkeyHub.ready.then(function () {
+				window.FireMonkeyHub.registerFeature({
+					id: 'ai-writing-detector',
+					label: 'AI Writing Detector',
+					description: 'Highlights AI-generated writing patterns',
+					scope: 'origin',
+					defaultEnabled: true,
+					onDisable: function () { if (highlightingEnabled) removeHighlights(); },
+				});
+				window.FireMonkeyHub.registerCommand({
+					id: 'ai-writing-detector.toggle',
+					name: 'AI: Toggle Highlighting',
+					group: 'All Sites',
+					color: '#1B1D23',
+					callback: toggleHighlighting,
+				});
+				window.FireMonkeyHub.declareScript({
+					id: 'ai-writing-detector',
+					name: 'AI Writing Detector',
+					version: '0.2',
+					updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/AI%20Writing%20Detector.user.js',
+					downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/AI%20Writing%20Detector.user.js',
+					description: 'Highlights signs of AI-generated writing',
+				});
+			});
+		} else {
+			if (document.readyState === 'loading') {
+				document.addEventListener('DOMContentLoaded', createToggleButton);
+			} else {
+				createToggleButton();
+			}
+		}
+	}, 0);
 })();

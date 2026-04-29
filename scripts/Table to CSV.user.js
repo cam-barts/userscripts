@@ -250,8 +250,43 @@
 
 	updateButtonVisibility();
 
-	new MutationObserver(() => updateButtonVisibility()).observe(document.body, {
-		childList: true,
-		subtree: true,
-	});
+	new MutationObserver(() => {
+		updateButtonVisibility();
+		if (typeof _hubHandle !== 'undefined') {
+			const tables = document.querySelectorAll('table');
+			_hubHandle.setEnabled(tables.length > 0);
+		}
+	}).observe(document.body, { childList: true, subtree: true });
+
+	// ──── Hub integration ────
+	let _hubHandle;
+	setTimeout(function () {
+		if (typeof window.FireMonkeyHub !== 'undefined') {
+			btn.style.display = 'none'; // hide standalone button when Hub present
+			window.FireMonkeyHub.ready.then(function () {
+				const tables = document.querySelectorAll('table');
+				_hubHandle = window.FireMonkeyHub.registerCommand({
+					id: 'table-to-csv.export',
+					name: 'Export Table to CSV',
+					group: 'All Sites',
+					color: '#2563eb',
+					enabled: tables.length > 0,
+					callback: function () {
+						const ts = document.querySelectorAll('table');
+						if (!ts.length) return;
+						if (ts.length === 1) { downloadCsv(tableToCsv(ts[0]), 0); return; }
+						openPanel(ts);
+					},
+				});
+				window.FireMonkeyHub.declareScript({
+					id: 'table-to-csv',
+					name: 'Table to CSV',
+					version: '0.2',
+					updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Table%20to%20CSV.user.js',
+					downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Table%20to%20CSV.user.js',
+					description: 'Detect tables on any page and download as CSV',
+				});
+			});
+		}
+	}, 0);
 })();

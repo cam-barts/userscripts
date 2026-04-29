@@ -27,6 +27,28 @@ UserScripts/
     └── ...
 ```
 
+## FireMonkey Hub
+
+The **FireMonkey Hub** is a unified floating widget that consolidates all per-script actions, feature toggles, update notifications, and repo discovery into one interface.
+
+### Hub Install Order
+
+Install scripts in this order so the Hub is ready before consumers register with it:
+
+1. **FireMonkey Hub Backend** — persistence, network, GitHub update checks
+2. **FireMonkey Hub** — floating UI, `window.FireMonkeyHub` API
+3. Individual scripts (AI Writing Detector, Table to CSV, GitHub Commit Labels, etc.)
+
+### Hub Features
+
+- **Actions tab** — all registered commands grouped by script
+- **Features tab** — toggle script features on/off globally or per-origin (site)
+- **Updates tab** — see installed script versions vs. latest; one-click update
+- **Discover tab** — new `*.user.js` files pushed to this repo surface here with an Install button
+- **Settings tab** — repo URL, branch, rate-limit cap, reset
+
+Scripts without a floating UI (Jira, Readwise, Confluence extensions) still appear in the Updates tab because they call `declareScript()`.
+
 ## Installation
 
 ### Installing FireMonkey
@@ -83,6 +105,8 @@ Replace `your-script` or `your-style` with the actual filename.
 
 | Script Name | Description | Applies To | Version |
 |------------|-------------|------------|---------|
+| [FireMonkey Hub Backend](scripts/FireMonkey%20Hub%20Backend.user.js) | Persistent storage and network backend for FireMonkey Hub (install first) | All sites | 0.1 |
+| [FireMonkey Hub](scripts/FireMonkey%20Hub.user.js) | Unified floating widget for actions, feature toggles, update notifications, and repo discovery | All sites | 0.1 |
 | [Readwise Auto-Tag Loop (Simple Reload)](scripts/Readwise%20Auto-Tag%20Loop%20(Simple%20Reload).user.js) | Invoke Ghostreader & apply "ta" tag, then reload queue page until empty | Readwise | 0.1 |
 | [Jira: show customfield IDs on hover](scripts/Jira%20show%20customfield%20IDs%20on%20hover.user.js) | Hover a field label on a Jira issue to see its customfield_xxx ID | Jira (Atlassian) | 0.1 |
 | [GitHub Commit Labels](scripts/GitHub%20Commit%20Labels.user.js) | Enhances GitHub commits with beautiful labels for conventional commit types (feat, fix, docs, etc.) | GitHub | 1.6.2 |

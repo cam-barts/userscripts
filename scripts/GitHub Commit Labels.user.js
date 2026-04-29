@@ -44,6 +44,8 @@ SOFTWARE.
 (function() {
     'use strict';
 
+    let _hubPresent = false;
+
     // Detect GitHub theme (dark, light, or dark dimmed)
     function detectTheme() {
         const html = document.documentElement;
@@ -1353,8 +1355,8 @@ SOFTWARE.
         debugLog('Updating theme colors');
         updateThemeColors();
 
-        // Create toggle button if it doesn't exist and is enabled
-        if (USER_CONFIG.showFloatingButton !== false) {
+        // Create toggle button if it doesn't exist and is enabled (suppressed when Hub present)
+        if (!_hubPresent && USER_CONFIG.showFloatingButton !== false) {
             debugLog('Creating label toggle button');
             createLabelToggle();
         }
@@ -1692,4 +1694,50 @@ SOFTWARE.
             setTimeout(addCommitLabels, 100);
         }
     }, 100));
+
+    // ──── Hub integration ────
+    setTimeout(function () {
+        if (typeof window.FireMonkeyHub !== 'undefined') {
+            _hubPresent = true;
+            window.FireMonkeyHub.ready.then(function () {
+                // Remove standalone floating buttons if they were created before Hub detected
+                const existing = document.getElementById('commit-labels-buttons');
+                if (existing) existing.remove();
+
+                window.FireMonkeyHub.registerFeature({
+                    id: 'github-commit-labels',
+                    label: 'GitHub Commit Labels',
+                    description: 'Adds conventional commit type labels to GitHub commit lists',
+                    scope: 'origin',
+                    defaultEnabled: true,
+                    onEnable: function () {
+                        USER_CONFIG.labelsVisible = true;
+                        GM_setValue('commitLabelsConfig', USER_CONFIG);
+                        document.querySelectorAll('.commit-label').forEach(function (l) { l.style.display = 'inline-flex'; });
+                    },
+                    onDisable: function () {
+                        USER_CONFIG.labelsVisible = false;
+                        GM_setValue('commitLabelsConfig', USER_CONFIG);
+                        document.querySelectorAll('.commit-label').forEach(function (l) { l.style.display = 'none'; });
+                    },
+                });
+                window.FireMonkeyHub.registerCommand({
+                    id: 'github-commit-labels.settings',
+                    name: 'Commit Label Settings',
+                    group: 'GitHub',
+                    color: '#238636',
+                    callback: createConfigWindow,
+                });
+                window.FireMonkeyHub.declareScript({
+                    id: 'github-commit-labels',
+                    name: 'GitHub Commit Labels',
+                    version: '1.6.2',
+                    updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/GitHub%20Commit%20Labels.user.js',
+                    downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/GitHub%20Commit%20Labels.user.js',
+                    description: 'Enhances GitHub commits with beautiful labels for conventional commit types',
+                    upstreamURL: 'https://github.com/nazdridoy/github-commit-labels',
+                });
+            });
+        }
+    }, 0);
 })();

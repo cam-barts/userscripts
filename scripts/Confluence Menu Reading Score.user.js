@@ -447,4 +447,19 @@ Sentence Count: ${sentenceCount}
 		color: "#FF9800",
 		callback: toggleHighlighting,
 	});
+
+	setTimeout(function () {
+		if (typeof window.FireMonkeyHub !== 'undefined') {
+			window.FireMonkeyHub.ready.then(function () {
+				window.FireMonkeyHub.declareScript({
+					id: 'confluence-reading-score',
+					name: 'Confluence Menu: Reading Score',
+					version: '0.3',
+					updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Reading%20Score.user.js',
+					downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Reading%20Score.user.js',
+					description: 'Analyzes readability of Confluence page content with sentence highlighting',
+				});
+			});
+		}
+	}, 0);
 })();

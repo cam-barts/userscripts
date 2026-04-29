@@ -113,5 +113,20 @@
 
   // Run highlighting once on page load
   window.addEventListener("load", queueHighlight);
+
+  setTimeout(function () {
+    if (typeof window.FireMonkeyHub !== 'undefined') {
+      window.FireMonkeyHub.ready.then(function () {
+        window.FireMonkeyHub.declareScript({
+          id: 'jira-age-highlighter',
+          name: 'Jira: Issue-Age Dynamic Highlighter',
+          version: '0.1',
+          updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Jira%20Age%20Dynamic%20Highlighter.user.js',
+          downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Jira%20Age%20Dynamic%20Highlighter.user.js',
+          description: 'Color-code Jira issue rows from green (new) to red (old) by table oldest issue age',
+        });
+      });
+    }
+  }, 0);
 })();
 

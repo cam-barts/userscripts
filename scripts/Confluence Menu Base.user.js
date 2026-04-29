@@ -12,70 +12,16 @@
 /**
  * Confluence Menu Base
  *
- * This script creates a global API that allows other userscripts to register
- * custom commands in a floating menu on Confluence pages.
- *
- * Architecture:
- * - Exposes window.FireMonkeyMenu.registerCommand() for other scripts
- * - Creates a single shared menu container (lazy-loaded on first use)
- * - Each registered command appears as a button in the menu
+ * Exposes window.FireMonkeyMenu.registerCommand() for other scripts.
+ * When FireMonkey Hub is installed, delegates to it (unified floating UI).
+ * Otherwise, provides a standalone floating menu as a fallback.
  */
-(function() {
+(function () {
   'use strict';
 
-  /**
-   * Global API: FireMonkeyMenu
-   * Available to all scripts running on the page
-   */
-  window.FireMonkeyMenu = {
-    /**
-     * Register a new command button in the menu
-     * @param {Object} config - Command configuration
-     * @param {string} config.name - Button text
-     * @param {string} [config.tooltip] - Hover tooltip
-     * @param {string} [config.color] - Background color (default: #4CAF50)
-     * @param {Function} config.callback - Function to execute when clicked
-     * @param {boolean} config.enabled - Whether to show this button
-     */
-    registerCommand: function(config) {
-      // Get existing menu or create it if this is the first command
-      const menu = document.getElementById('confluence-fm-menu') || createMenu();
+  let _standaloneMenu = null;
 
-      // Create the command button
-      const btn = document.createElement('button');
-      btn.textContent = config.name;
-      btn.title = config.tooltip || '';
-      btn.style.cssText = `
-        padding: 6px 12px;
-        background: ${config.color || '#4CAF50'};
-        color: white;
-        border: none;
-        border-radius: 3px;
-        cursor: pointer;
-        width: fit-content;
-        min-width: 130px;
-      `;
-
-      // Attach click handler
-      btn.onclick = () => {
-        if (typeof config.callback === 'function') {
-          config.callback();
-        }
-      };
-
-      // Only add button if explicitly enabled
-      if (config.enabled) {
-        menu.appendChild(btn);
-      }
-    }
-  };
-
-  /**
-   * Create the floating menu container
-   * Called once on first registerCommand() call
-   * @returns {HTMLElement} The menu container element
-   */
-  function createMenu() {
+  function _createStandaloneMenu() {
     const el = document.createElement('div');
     el.id = 'confluence-fm-menu';
     el.style.cssText = `
@@ -95,4 +41,62 @@
     document.body.appendChild(el);
     return el;
   }
+
+  function _standaloneRegister(config) {
+    const menu = _standaloneMenu || (_standaloneMenu = document.getElementById('confluence-fm-menu') || _createStandaloneMenu());
+    const btn = document.createElement('button');
+    btn.textContent = config.name;
+    btn.title = config.tooltip || '';
+    btn.style.cssText = `
+      padding: 6px 12px;
+      background: ${config.color || '#4CAF50'};
+      color: white;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      width: fit-content;
+      min-width: 130px;
+    `;
+    btn.onclick = () => typeof config.callback === 'function' && config.callback();
+    if (config.enabled !== false) menu.appendChild(btn);
+    return {
+      unregister() { btn.remove(); },
+      setEnabled(val) {
+        if (val) menu.appendChild(btn);
+        else btn.remove();
+      },
+    };
+  }
+
+  window.FireMonkeyMenu = {
+    registerCommand(config) {
+      if (typeof window.FireMonkeyHub !== 'undefined') {
+        const id = 'confluence.' + (config.name || '').replace(/[^a-z0-9]/gi, '-').toLowerCase() + '.' + Math.random().toString(36).slice(2, 6);
+        return window.FireMonkeyHub.registerCommand({
+          id,
+          name: config.name,
+          tooltip: config.tooltip,
+          color: config.color,
+          group: 'Confluence',
+          callback: config.callback,
+          enabled: config.enabled !== false,
+        });
+      }
+      return _standaloneRegister(config);
+    },
+  };
+
+  // Declare this script to the Hub for update tracking
+  setTimeout(function () {
+    if (typeof window.FireMonkeyHub !== 'undefined') {
+      window.FireMonkeyHub.declareScript({
+        id: 'confluence-menu-base',
+        name: 'Confluence Menu Base',
+        version: '0.4',
+        updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Base.user.js',
+        downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Base.user.js',
+        description: 'Add command menu to Confluence pages',
+      });
+    }
+  }, 0);
 })();
