@@ -10,6 +10,7 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
+// @require      FireMonkey Hub Client
 // @run-at       document-end
 // @homepageURL  https://github.com/nazdridoy/github-commit-labels
 // @supportURL   https://github.com/nazdridoy/github-commit-labels/issues
@@ -44,7 +45,7 @@ SOFTWARE.
 (function() {
     'use strict';
 
-    let _hubPresent = false;
+    let _hubHandle = null;
 
     // Detect GitHub theme (dark, light, or dark dimmed)
     function detectTheme() {
@@ -163,24 +164,6 @@ SOFTWARE.
         labelsVisible: true,
         showScope: false,
         debugMode: false,  // Add debug mode setting
-        labelStyle: {
-            fontSize: '14px',
-            fontWeight: '500',
-            height: '24px',
-            padding: '0 10px',
-            marginRight: '8px',
-            borderRadius: '20px',
-            minWidth: 'auto',
-            textAlign: 'center',
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            whiteSpace: 'nowrap',
-            background: 'rgba(0, 0, 0, 0.2)',
-            backdropFilter: 'blur(4px)',
-            border: '1px solid rgba(240, 246, 252, 0.1)', // Subtle border
-            color: '#ffffff'
-        },
         commitTypes: {
             // Features
             feat: { emoji: '✨', label: 'Feature', color: 'green', description: 'New user features (not for new files without user features)' },
@@ -291,6 +274,35 @@ SOFTWARE.
     if (configUpdated) {
         GM_setValue('commitLabelsConfig', USER_CONFIG);
     }
+
+    // Inject the fixed, non-configurable label styling once. Only background-color/color
+    // (and the isBreaking overrides) vary per-type, so those stay inline on the label.
+    function injectLabelStyles() {
+        if (document.getElementById('commit-labels-style')) return;
+        const style = document.createElement('style');
+        style.id = 'commit-labels-style';
+        style.textContent = `
+            .commit-label {
+                font-size: 14px;
+                font-weight: 500;
+                height: 24px;
+                padding: 0 10px;
+                margin-right: 8px;
+                border-radius: 20px;
+                min-width: auto;
+                text-align: center;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                white-space: nowrap;
+                background: rgba(0, 0, 0, 0.2);
+                backdrop-filter: blur(4px);
+                border: 1px solid rgba(240, 246, 252, 0.1);
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    injectLabelStyles();
 
     // Create floating toggle button for labels
     function createLabelToggle() {
@@ -740,6 +752,76 @@ SOFTWARE.
             groupedTypes[key].types.push(type);
         });
 
+        // Build the emoji/label/color/delete-button controls shared by every type row.
+        // `types` is the row's mutable alias array; mutate it in place (never reassign)
+        // so closures that captured it (e.g. deleteButton) always see current aliases.
+        function renderTypeRow(typeDiv, types, initialValues) {
+            // Emoji input
+            const emojiInput = document.createElement('input');
+            emojiInput.type = 'text';
+            emojiInput.value = initialValues.emoji;
+            emojiInput.style.width = '40px';
+            emojiInput.style.background = configStyles.input.background;
+            emojiInput.style.color = configStyles.input.color;
+            emojiInput.style.border = configStyles.input.border;
+            emojiInput.style.borderRadius = '4px';
+            emojiInput.style.padding = '4px';
+            emojiInput.dataset.types = types.join(',');
+            emojiInput.dataset.field = 'emoji';
+            typeDiv.appendChild(emojiInput);
+
+            // Label input
+            const labelInput = document.createElement('input');
+            labelInput.type = 'text';
+            labelInput.value = initialValues.label;
+            labelInput.style.width = '120px';
+            labelInput.style.background = configStyles.input.background;
+            labelInput.style.color = configStyles.input.color;
+            labelInput.style.border = configStyles.input.border;
+            labelInput.style.borderRadius = '4px';
+            labelInput.style.padding = '4px';
+            labelInput.dataset.types = types.join(',');
+            labelInput.dataset.field = 'label';
+            typeDiv.appendChild(labelInput);
+
+            // Color select
+            const colorSelect = document.createElement('select');
+            Object.keys(COLORS).forEach(color => {
+                const option = document.createElement('option');
+                option.value = color;
+                option.textContent = color;
+                if (initialValues.color === color) option.selected = true;
+                colorSelect.appendChild(option);
+            });
+            colorSelect.style.background = configStyles.input.background;
+            colorSelect.style.color = configStyles.input.color;
+            colorSelect.style.border = configStyles.input.border;
+            colorSelect.style.borderRadius = '4px';
+            colorSelect.style.padding = '4px';
+            colorSelect.dataset.types = types.join(',');
+            colorSelect.dataset.field = 'color';
+            typeDiv.appendChild(colorSelect);
+
+            // Delete button
+            const deleteButton = document.createElement('button');
+            deleteButton.textContent = '🗑️';
+            deleteButton.style.cssText = `
+                padding: 2px 8px;
+                background: ${configStyles.button.danger.background};
+                color: ${configStyles.button.danger.color};
+                border: ${configStyles.button.danger.border};
+                border-radius: 4px;
+                cursor: pointer;
+            `;
+            deleteButton.onclick = () => {
+                if (confirm(`Delete commit types "${types.join(', ')}"?`)) {
+                    typeDiv.remove();
+                    types.forEach(type => delete USER_CONFIG.commitTypes[type]);
+                }
+            };
+            typeDiv.appendChild(deleteButton);
+        }
+
         // Create rows for grouped types
         Object.entries(groupedTypes).forEach(([label, { types, config }]) => {
             const typeDiv = document.createElement('div');
@@ -798,6 +880,10 @@ SOFTWARE.
                         USER_CONFIG.commitTypes[type] = { ...config };
                     });
 
+                    // Keep the closured `types` array in sync (mutate, don't reassign)
+                    // so deleteButton and other handlers always see the current aliases.
+                    types.splice(0, types.length, ...newTypes);
+
                     // Update the display
                     typeSpan.textContent = newTypes.join(', ') + ':';
 
@@ -813,70 +899,7 @@ SOFTWARE.
             typeContainer.appendChild(editAliasButton);
             typeDiv.appendChild(typeContainer);
 
-            // Emoji input
-            const emojiInput = document.createElement('input');
-            emojiInput.type = 'text';
-            emojiInput.value = config.emoji;
-            emojiInput.style.width = '40px';
-            emojiInput.style.background = configStyles.input.background;
-            emojiInput.style.color = configStyles.input.color;
-            emojiInput.style.border = configStyles.input.border;
-            emojiInput.style.borderRadius = '4px';
-            emojiInput.style.padding = '4px';
-            emojiInput.dataset.types = types.join(',');
-            emojiInput.dataset.field = 'emoji';
-            typeDiv.appendChild(emojiInput);
-
-            // Label input
-            const labelInput = document.createElement('input');
-            labelInput.type = 'text';
-            labelInput.value = config.label;
-            labelInput.style.width = '120px';
-            labelInput.style.background = configStyles.input.background;
-            labelInput.style.color = configStyles.input.color;
-            labelInput.style.border = configStyles.input.border;
-            labelInput.style.borderRadius = '4px';
-            labelInput.style.padding = '4px';
-            labelInput.dataset.types = types.join(',');
-            labelInput.dataset.field = 'label';
-            typeDiv.appendChild(labelInput);
-
-            // Color select
-            const colorSelect = document.createElement('select');
-            Object.keys(COLORS).forEach(color => {
-                const option = document.createElement('option');
-                option.value = color;
-                option.textContent = color;
-                if (config.color === color) option.selected = true;
-                colorSelect.appendChild(option);
-            });
-            colorSelect.style.background = configStyles.input.background;
-            colorSelect.style.color = configStyles.input.color;
-            colorSelect.style.border = configStyles.input.border;
-            colorSelect.style.borderRadius = '4px';
-            colorSelect.style.padding = '4px';
-            colorSelect.dataset.types = types.join(',');
-            colorSelect.dataset.field = 'color';
-            typeDiv.appendChild(colorSelect);
-
-            // Delete button
-            const deleteButton = document.createElement('button');
-            deleteButton.textContent = '🗑️';
-            deleteButton.style.cssText = `
-                padding: 2px 8px;
-                background: ${configStyles.button.danger.background};
-                color: ${configStyles.button.danger.color};
-                border: ${configStyles.button.danger.border};
-                border-radius: 4px;
-                cursor: pointer;
-            `;
-            deleteButton.onclick = () => {
-                if (confirm(`Delete commit types "${types.join(', ')}"?`)) {
-                    typeDiv.remove();
-                    types.forEach(type => delete USER_CONFIG.commitTypes[type]);
-                }
-            };
-            typeDiv.appendChild(deleteButton);
+            renderTypeRow(typeDiv, types, config);
 
             typesContainer.appendChild(typeDiv);
         });
@@ -933,70 +956,7 @@ SOFTWARE.
                 typeSpan.textContent = types.join(', ') + ':';
                 typeDiv.appendChild(typeSpan);
 
-                // Emoji input
-                const emojiInput = document.createElement('input');
-                emojiInput.type = 'text';
-                emojiInput.value = baseConfig.emoji;
-                emojiInput.style.width = '40px';
-                emojiInput.style.background = configStyles.input.background;
-                emojiInput.style.color = configStyles.input.color;
-                emojiInput.style.border = configStyles.input.border;
-                emojiInput.style.borderRadius = '4px';
-                emojiInput.style.padding = '4px';
-                emojiInput.dataset.types = types.join(',');
-                emojiInput.dataset.field = 'emoji';
-                typeDiv.appendChild(emojiInput);
-
-                // Label input
-                const labelInput = document.createElement('input');
-                labelInput.type = 'text';
-                labelInput.value = baseConfig.label;
-                labelInput.style.width = '120px';
-                labelInput.style.background = configStyles.input.background;
-                labelInput.style.color = configStyles.input.color;
-                labelInput.style.border = configStyles.input.border;
-                labelInput.style.borderRadius = '4px';
-                labelInput.style.padding = '4px';
-                labelInput.dataset.types = types.join(',');
-                labelInput.dataset.field = 'label';
-                typeDiv.appendChild(labelInput);
-
-                // Color select
-                const colorSelect = document.createElement('select');
-                Object.keys(COLORS).forEach(color => {
-                    const option = document.createElement('option');
-                    option.value = color;
-                    option.textContent = color;
-                    if (color === 'blue') option.selected = true;
-                    colorSelect.appendChild(option);
-                });
-                colorSelect.style.background = configStyles.input.background;
-                colorSelect.style.color = configStyles.input.color;
-                colorSelect.style.border = configStyles.input.border;
-                colorSelect.style.borderRadius = '4px';
-                colorSelect.style.padding = '4px';
-                colorSelect.dataset.types = types.join(',');
-                colorSelect.dataset.field = 'color';
-                typeDiv.appendChild(colorSelect);
-
-                // Delete button
-                const deleteButton = document.createElement('button');
-                deleteButton.textContent = '🗑️';
-                deleteButton.style.cssText = `
-                    padding: 2px 8px;
-                    background: ${configStyles.button.danger.background};
-                    color: ${configStyles.button.danger.color};
-                    border: ${configStyles.button.danger.border};
-                    border-radius: 4px;
-                    cursor: pointer;
-                `;
-                deleteButton.onclick = () => {
-                    if (confirm(`Delete commit types "${types.join(', ')}"?`)) {
-                        typeDiv.remove();
-                        types.forEach(type => delete USER_CONFIG.commitTypes[type]);
-                    }
-                };
-                typeDiv.appendChild(deleteButton);
+                renderTypeRow(typeDiv, types, baseConfig);
 
                 typesContainer.appendChild(typeDiv);
             }
@@ -1156,12 +1116,17 @@ SOFTWARE.
         `;
 
         copyButton.onclick = () => {
-            configOutput.select();
-            document.execCommand('copy');
-            copyButton.textContent = 'Copied!';
-            setTimeout(() => {
-                copyButton.textContent = 'Copy to Clipboard';
-            }, 2000);
+            navigator.clipboard.writeText(configOutput.value).then(() => {
+                copyButton.textContent = 'Copied!';
+                setTimeout(() => {
+                    copyButton.textContent = 'Copy to Clipboard';
+                }, 2000);
+            }).catch(() => {
+                copyButton.textContent = 'Copy failed';
+                setTimeout(() => {
+                    copyButton.textContent = 'Copy to Clipboard';
+                }, 2000);
+            });
         };
 
         exportSection.appendChild(exportTitle);
@@ -1356,7 +1321,7 @@ SOFTWARE.
         updateThemeColors();
 
         // Create toggle button if it doesn't exist and is enabled (suppressed when Hub present)
-        if (!_hubPresent && USER_CONFIG.showFloatingButton !== false) {
+        if (!(_hubHandle && _hubHandle.hubSeen()) && USER_CONFIG.showFloatingButton !== false) {
             debugLog('Creating label toggle button');
             createLabelToggle();
         }
@@ -1442,22 +1407,16 @@ SOFTWARE.
 
                                 const color = COLORS[USER_CONFIG.commitTypes[type].color];
 
-                                // Apply styles
-                                const styles = {
-                                    ...USER_CONFIG.labelStyle,
-                                    backgroundColor: color.bg,
-                                    color: color.text,
-                                    display: USER_CONFIG.labelsVisible ? 'inline-flex' : 'none'
-                                };
+                                // Apply per-type styles; fixed styling lives in the injected
+                                // .commit-label stylesheet (see injectLabelStyles).
+                                label.style.backgroundColor = color.bg;
+                                label.style.color = color.text;
+                                label.style.display = USER_CONFIG.labelsVisible ? 'inline-flex' : 'none';
 
                                 if (isBreaking) {
-                                    styles.border = '2px solid #d73a49';
-                                    styles.fontWeight = 'bold';
+                                    label.style.border = '2px solid #d73a49';
+                                    label.style.fontWeight = 'bold';
                                 }
-
-                                label.style.cssText = Object.entries(styles)
-                                    .map(([key, value]) => `${key.replace(/[A-Z]/g, m => '-' + m.toLowerCase())}: ${value}`)
-                                    .join(';');
 
                                 // Enhanced tooltip
                                 if (USER_CONFIG.enableTooltips && USER_CONFIG.commitTypes[type].description) {
@@ -1524,7 +1483,6 @@ SOFTWARE.
 
                                     label.addEventListener('mouseleave', () => {
                                         label.style.transform = 'translateY(0)';
-                                        label.style.boxShadow = styles.boxShadow;
 
                                         // Remove custom tooltip if it exists
                                         const tooltip = document.querySelector('.commit-label-tooltip');
@@ -1545,7 +1503,6 @@ SOFTWARE.
 
                                     label.addEventListener('mouseleave', () => {
                                         label.style.transform = 'translateY(0)';
-                                        label.style.boxShadow = styles.boxShadow;
                                     });
                                 }
 
@@ -1620,14 +1577,17 @@ SOFTWARE.
         }
     }
 
-    // Set up MutationObserver to watch for DOM changes
+    // Set up a single MutationObserver that both refreshes labels on new commit rows
+    // and detects GitHub's client-side (turbo) navigation between pages.
     function setupMutationObserver() {
         debugLog('Setting up MutationObserver');
         const observer = new MutationObserver(debounce((mutations) => {
             debugLog('DOM changes detected:', mutations);
             for (const mutation of mutations) {
-                if (mutation.addedNodes.length) {
+                if (mutation.type === 'childList' && mutation.addedNodes.length) {
                     debugLog('New nodes added, triggering addCommitLabels');
+                    // addCommitLabels() itself no-ops when we're not on a commit page,
+                    // so this single call covers both label refresh and navigation.
                     addCommitLabels();
                 }
             }
@@ -1662,25 +1622,6 @@ SOFTWARE.
     // Initialize on page load
     initialize();
 
-    // Handle GitHub's client-side navigation
-    const navigationObserver = new MutationObserver(debounce((mutations) => {
-        for (const mutation of mutations) {
-            if (mutation.type === 'childList') {
-                // Check if we're on a commit page after navigation
-                if (isCommitPage()) {
-                    // Small delay to ensure GitHub has finished rendering
-                    setTimeout(addCommitLabels, 100);
-                }
-            }
-        }
-    }, 100));
-
-    // Observe changes to the main content area
-    navigationObserver.observe(document.body, {
-        childList: true,
-        subtree: true
-    });
-
     // Listen for popstate events (browser back/forward navigation)
     window.addEventListener('popstate', debounce(() => {
         if (isCommitPage()) {
@@ -1695,90 +1636,45 @@ SOFTWARE.
         }
     }, 100));
 
-    // ──── Hub integration (event-only protocol, cross-realm safe) ────
-    (function () {
-        const TAG = '[fmhub:commit-labels]';
-        const _cmds = new Map();
-        const _feats = new Map();
-        const _scripts = [];
-
-        function _emit(t, p) {
-            document.dispatchEvent(new CustomEvent('fmhub:' + t, { detail: JSON.stringify(p || {}) }));
-        }
-
-        document.addEventListener('fmhub:invoke', function (e) {
-            try {
-                const { id } = JSON.parse(e.detail || '{}');
-                const c = _cmds.get(id);
-                if (c && typeof c.cb === 'function') { try { c.cb(); } catch (err) { console.error(TAG, err); } }
-            } catch {}
-        });
-
-        document.addEventListener('fmhub:featureChanged', function (e) {
-            try {
-                const { id, enabled } = JSON.parse(e.detail || '{}');
-                const f = _feats.get(id);
-                if (!f) return;
-                if (f.last === enabled) return;
-                f.last = enabled;
-                try {
-                    if (enabled && f.onEnable) f.onEnable();
-                    if (!enabled && f.onDisable) f.onDisable();
-                } catch (err) { console.error(TAG, 'feature', err); }
-            } catch {}
-        });
-
-        document.addEventListener('fmhub:hubReady', function () {
-            _hubPresent = true;
-            const existing = document.getElementById('commit-labels-buttons');
-            if (existing) existing.remove();
-            for (const [id, c] of _cmds) _emit('registerCommand', { id, ...c.meta });
-            for (const [id, f] of _feats) _emit('registerFeature', { id, ...f.meta });
-            for (const s of _scripts) _emit('declareScript', s);
-        });
-
-        const featMeta = {
-            label: 'GitHub Commit Labels',
-            description: 'Adds conventional commit type labels to GitHub commit lists',
-            scope: 'origin',
-            defaultEnabled: true,
-        };
-        _feats.set('github-commit-labels', {
-            onEnable: function () {
-                USER_CONFIG.labelsVisible = true;
-                GM_setValue('commitLabelsConfig', USER_CONFIG);
-                document.querySelectorAll('.commit-label').forEach(function (l) { l.style.display = 'inline-flex'; });
-            },
-            onDisable: function () {
-                USER_CONFIG.labelsVisible = false;
-                GM_setValue('commitLabelsConfig', USER_CONFIG);
-                document.querySelectorAll('.commit-label').forEach(function (l) { l.style.display = 'none'; });
-            },
-            last: null,
-            meta: featMeta,
-        });
-        _emit('registerFeature', { id: 'github-commit-labels', ...featMeta });
-
-        const cmdMeta = {
-            name: 'Commit Label Settings',
-            tooltip: '',
-            color: '#238636',
-            group: 'GitHub',
-            enabled: true,
-        };
-        _cmds.set('github-commit-labels.settings', { cb: createConfigWindow, meta: cmdMeta });
-        _emit('registerCommand', { id: 'github-commit-labels.settings', ...cmdMeta });
-
-        const scriptMeta = {
+    // ──── Hub integration via the shared client ────
+    if (typeof window.FMHubClient !== 'undefined') {
+        _hubHandle = window.FMHubClient.connect({
             id: 'github-commit-labels',
-            name: 'GitHub Commit Labels',
-            version: '1.6.7',
+            description: 'Enhances GitHub commits with beautiful labels for conventional commit types',
             updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/GitHub%20Commit%20Labels.user.js',
             downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/GitHub%20Commit%20Labels.user.js',
-            description: 'Enhances GitHub commits with beautiful labels for conventional commit types',
             upstreamURL: 'https://github.com/nazdridoy/github-commit-labels',
-        };
-        _scripts.push(scriptMeta);
-        _emit('declareScript', scriptMeta);
-    })();
+            features: [{
+                id: 'github-commit-labels',
+                label: 'GitHub Commit Labels',
+                description: 'Adds conventional commit type labels to GitHub commit lists',
+                scope: 'origin',
+                defaultEnabled: true,
+            }],
+            commands: [{
+                id: 'github-commit-labels.settings',
+                name: 'Commit Label Settings',
+                tooltip: '',
+                color: '#238636',
+                group: 'GitHub',
+                enabled: true,
+            }],
+            onInvoke(id) {
+                if (id === 'github-commit-labels.settings') createConfigWindow();
+            },
+            onFeatureChanged(id, enabled) {
+                if (id !== 'github-commit-labels') return;
+                USER_CONFIG.labelsVisible = enabled;
+                GM_setValue('commitLabelsConfig', USER_CONFIG);
+                document.querySelectorAll('.commit-label').forEach(function (l) {
+                    l.style.display = enabled ? 'inline-flex' : 'none';
+                });
+            },
+        });
+        // Hub arrived (now or later): drop the standalone toggle button.
+        _hubHandle.onHubSeen(function () {
+            const existing = document.getElementById('commit-labels-buttons');
+            if (existing) existing.remove();
+        });
+    }
 })();

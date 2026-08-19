@@ -26,3 +26,8 @@ temp/
 # Personal/private scripts (if any)
 private/
 .env
+
+# Node tooling (dev-only; scripts themselves have no build step)
+node_modules/
+test-results/
+playwright-report/

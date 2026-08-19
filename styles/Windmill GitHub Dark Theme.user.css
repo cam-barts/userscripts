@@ -1,10 +1,10 @@
 /* ==UserStyle==
-@name Windmill GitHub Dark
-@author: cam-barts
+@name Windmill GitHub Dark Theme
+@author cam-barts
 @namespace windmill-github-dark
 @description GitHub Dark theme for Windmill
 @version     1.1
-@match https://.windmill.dev/
+@match https://*.windmill.dev/*
 @match https://app.windmill.dev/*
 @match https://windmill.shadeking.cam/*
 @updateURL        https://raw.githubusercontent.com/cam-barts/userscripts/main/styles/Windmill%20GitHub%20Dark%20Theme.user.css

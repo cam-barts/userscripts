@@ -47,8 +47,10 @@ elif [[ "$CURRENT_VERSION" =~ ^([0-9]+)\.([0-9]+)$ ]]; then
   NEW_VERSION="$MAJOR.$NEW_MINOR"
 
 else
-  echo "Error: Unsupported version format: $CURRENT_VERSION"
-  exit 1
+  # Skip rather than abort: the workflow loop runs under `set -e`, and one
+  # oddly-versioned file must not silently kill the bumps for every file after it.
+  echo "Warning: Unsupported version format '$CURRENT_VERSION' in $FILE - skipping"
+  exit 0
 fi
 
 echo "New version: $NEW_VERSION"
@@ -56,13 +58,6 @@ echo "New version: $NEW_VERSION"
 # Update version in the file
 if [[ "$FILE" == *.user.js ]]; then
   sed -i "s|^// @version.*|// @version      $NEW_VERSION|" "$FILE"
-
-  # Also bump any inline scriptMeta `version: '<CURRENT>'` literals so the
-  # version reported via fmhub:declareScript / fmhub:hubReady / fmhub:hello
-  # stays in sync with @version. Only replaces values that match the previous
-  # @version, so unrelated `version:` lines in the file body are untouched.
-  CURRENT_VERSION_REGEX=$(echo "$CURRENT_VERSION" | sed 's/[.[\*^$()+?{|]/\\&/g')
-  sed -i "s|version: '$CURRENT_VERSION_REGEX'|version: '$NEW_VERSION'|g" "$FILE"
 elif [[ "$FILE" == *.user.css ]]; then
   sed -i "s|^@version.*|@version     $NEW_VERSION|" "$FILE"
 fi
@@ -71,20 +66,24 @@ echo "✓ Updated version in $FILE"
 
 # Update README.md if the script is listed there
 BASENAME=$(basename "$FILE")
+# README links are URL-encoded (spaces -> %20), so match against that form
+ENCODED=$(printf '%s' "$BASENAME" | sed 's/ /%20/g')
 README="README.md"
 
 if [ -f "$README" ]; then
   # Check if this file is mentioned in README
-  if grep -q "$BASENAME" "$README"; then
+  if grep -q "$ENCODED" "$README"; then
     echo "Updating version in README.md..."
 
-    # Escape special characters for sed
-    BASENAME_ESCAPED=$(echo "$BASENAME" | sed 's/[.[\*^$()+?{|]/\\&/g')
-    CURRENT_VERSION_ESCAPED=$(echo "$CURRENT_VERSION" | sed 's/[.[\*^$()+?{|]/\\&/g')
+    # Escape for a sed BRE address with / delimiter. Only ] [ \ . * ^ $ /
+    # are special there; escaping ( ) + ? { | would CREATE BRE operators
+    # (\( \) are groups), which silently broke matching for the one
+    # filename containing parentheses.
+    ENCODED_ESCAPED=$(echo "$ENCODED" | sed 's/[][\.*^$/]/\\&/g')
+    CURRENT_VERSION_ESCAPED=$(echo "$CURRENT_VERSION" | sed 's/[][\.*^$/]/\\&/g')
 
     # Replace version in the table row that contains this filename
-    # This handles both URL-encoded and non-encoded filenames
-    sed -i "/$BASENAME_ESCAPED/s/$CURRENT_VERSION_ESCAPED/$NEW_VERSION/g" "$README"
+    sed -i "/$ENCODED_ESCAPED/s/$CURRENT_VERSION_ESCAPED/$NEW_VERSION/g" "$README"
 
     echo "✓ Updated version in README.md"
   fi

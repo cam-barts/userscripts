@@ -8,6 +8,10 @@ on:
       - 'scripts/**/*.user.js'
       - 'styles/**/*.user.css'
 
+concurrency:
+  group: version-bump-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   increment-versions:
     # Skip if commit message contains [skip-version] or was made by github-actions
@@ -22,7 +26,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2  # Need at least 2 commits to compare
+          fetch-depth: 0  # Need full history to diff across multi-commit pushes
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure Git
@@ -32,8 +36,14 @@ jobs:
 
       - name: Find modified scripts and increment versions
         run: |
-          # Get list of modified .user.js and .user.css files
-          MODIFIED_FILES=$(git diff --name-only HEAD~1 HEAD | grep -E '\.(user\.js|user\.css)$' || true)
+          # Get list of modified .user.js and .user.css files. Diff against the
+          # pre-push SHA so multi-commit pushes aren't missed; on a new branch
+          # (before is all zeros) there's no prior state, so fall back to HEAD~1.
+          BEFORE_SHA="${{ github.event.before }}"
+          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            BEFORE_SHA="HEAD~1"
+          fi
+          MODIFIED_FILES=$(git diff --name-only "$BEFORE_SHA" HEAD | grep -E '\.(user\.js|user\.css)$' || true)
 
           if [ -z "$MODIFIED_FILES" ]; then
             echo "No user scripts or styles modified"
@@ -65,4 +75,7 @@ jobs:
         run: |
           git add scripts/ styles/ README.md
           git commit -m "chore: auto-increment versions [skip-version]"
+          # checkout pins github.sha, not the branch tip, so a queued run behind
+          # another bump would otherwise push non-fast-forward and fail.
+          git pull --rebase origin "${GITHUB_REF_NAME}"
           git push

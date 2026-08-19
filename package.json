@@ -1,0 +1,17 @@
+{
+  "name": "userscripts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "eslint scripts/",
+    "test": "vitest run",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "eslint": "^9.0.0",
+    "eslint-plugin-userscripts": "^0.5.6",
+    "jsdom": "^25.0.0",
+    "vitest": "^2.0.0"
+  }
+}

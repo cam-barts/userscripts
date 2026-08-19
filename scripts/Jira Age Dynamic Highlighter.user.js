@@ -1,13 +1,15 @@
 // ==UserScript==
-// @name         Jira: Issue‐Age Dynamic Highlighter
+// @name         Jira: Issue-Age Dynamic Highlighter
 // @version      0.6
-// @description  Color‐code Jira issue rows from green (new) to red (old) by table's oldest issue age
+// @description  Color-code Jira issue rows from green (new) to red (old) by table's oldest issue age
 // @author       cam-barts
 // @match        https://*.atlassian.net/jira/servicedesk/projects/*/queues/*
 // @grant        none
+// @require      FireMonkey Hub Client
 // @updateURL    https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Jira%20Age%20Dynamic%20Highlighter.user.js
 // @downloadURL  https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Jira%20Age%20Dynamic%20Highlighter.user.js
 // ==/UserScript==
+
 /**
  * Jira: Issue-Age Dynamic Highlighter
  *
@@ -114,21 +116,16 @@
   // Run highlighting once on page load
   window.addEventListener("load", queueHighlight);
 
-  // Hub integration: event-only protocol (cross-realm safe)
-  (function () {
-    const meta = {
+  // Hub integration: declare via the shared client (no commands/features)
+  if (typeof window.FMHubClient !== 'undefined') {
+    window.FMHubClient.connect({
       id: 'jira-age-highlighter',
-      name: 'Jira: Issue-Age Dynamic Highlighter',
-      version: '0.6',
+      description: 'Color-code Jira issue rows from green (new) to red (old) by table oldest issue age',
       updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Jira%20Age%20Dynamic%20Highlighter.user.js',
       downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Jira%20Age%20Dynamic%20Highlighter.user.js',
-      description: 'Color-code Jira issue rows from green (new) to red (old) by table oldest issue age',
-    };
-    function _emit() {
-      document.dispatchEvent(new CustomEvent('fmhub:declareScript', { detail: JSON.stringify(meta) }));
-    }
-    _emit();
-    document.addEventListener('fmhub:hubReady', _emit);
-  })();
+    });
+  }
+
+  if (window.__TEST_HOOKS__) Object.assign(window.__TEST_HOOKS__, { colorForFraction });
 })();
 

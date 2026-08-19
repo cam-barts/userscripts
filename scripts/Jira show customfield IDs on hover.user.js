@@ -5,6 +5,7 @@
 // @author       cam-barts
 // @match        https://*.atlassian.net/browse/*
 // @grant        none
+// @require      FireMonkey Hub Client
 // @updateURL    https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Jira%20show%20customfield%20IDs%20on%20hover.user.js
 // @downloadURL  https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Jira%20show%20customfield%20IDs%20on%20hover.user.js
 // ==/UserScript==
@@ -92,21 +93,14 @@
     console.error("Jira customfield tooltip script error:", err);
   });
 
-  // Hub integration: event-only protocol (cross-realm safe)
-  (function () {
-    const meta = {
+  // Hub integration: declare via the shared client (no commands/features)
+  if (typeof window.FMHubClient !== 'undefined') {
+    window.FMHubClient.connect({
       id: 'jira-customfield-ids',
-      name: 'Jira: show customfield IDs on hover',
-      version: '0.6',
+      description: 'Hover a field label on a Jira issue to see its customfield_xxx ID',
       updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Jira%20show%20customfield%20IDs%20on%20hover.user.js',
       downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Jira%20show%20customfield%20IDs%20on%20hover.user.js',
-      description: 'Hover a field label on a Jira issue to see its customfield_xxx ID',
-    };
-    function _emit() {
-      document.dispatchEvent(new CustomEvent('fmhub:declareScript', { detail: JSON.stringify(meta) }));
-    }
-    _emit();
-    document.addEventListener('fmhub:hubReady', _emit);
-  })();
+    });
+  }
 
 })();

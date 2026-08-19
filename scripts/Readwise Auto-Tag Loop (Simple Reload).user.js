@@ -6,12 +6,19 @@
 // @author       cam-barts
 // @match        https://read.readwise.io/filter/*
 // @grant        none
+// @require      FireMonkey Hub Client
 // @updateURL    https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Readwise%20Auto-Tag%20Loop%20(Simple%20Reload).user.js
 // @downloadURL  https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Readwise%20Auto-Tag%20Loop%20(Simple%20Reload).user.js
 // ==/UserScript==
 
 (function() {
   'use strict';
+
+  const TAG = '[fmhub:readwise-auto-tag]';
+  function _log() {
+    if (window.__FMHUB_DEBUG__ === false) return;
+    try { console.log.apply(console, [TAG].concat([].slice.call(arguments))); } catch (e) {}
+  }
 
   // ──── CONFIGURATION ────
   const START_URL    = location.href;    // Save the current queue page URL for reloading
@@ -20,32 +27,7 @@
   const STEP_DELAY   = 3000;             // Wait 3 seconds between automation steps
   // ───────────────────────
 
-  console.clear();
-  console.log('🔁 Readwise Auto-Tag Loop starting on', START_URL);
-
-  /**
-   * Wait for a DOM element to appear on the page
-   * @param {string} selector - CSS selector to look for
-   * @param {number} interval - How often to check (milliseconds)
-   * @param {number} timeout - When to give up waiting (milliseconds)
-   * @returns {Promise<Element>} - Resolves with the found element or rejects on timeout
-   */
-  function waitFor(selector, interval = POLL_INT, timeout = POLL_TIMEOUT) {
-    return new Promise((resolve, reject) => {
-      const endTime = Date.now() + timeout;
-      const iv = setInterval(() => {
-        const el = document.querySelector(selector);
-        if (el) {
-          clearInterval(iv);
-          resolve(el);
-        }
-        else if (Date.now() > endTime) {
-          clearInterval(iv);
-          reject(`Timeout waiting for "${selector}"`);
-        }
-      }, interval);
-    });
-  }
+  _log('🔁 Readwise Auto-Tag Loop starting on', START_URL);
 
   /**
    * Simulate a keyboard key press on the document body
@@ -68,57 +50,57 @@
    */
   function doTagFlow(firstLink) {
     return new Promise(resolve => {
-      console.log('🔄 Starting tag flow…');
+      _log('🔄 Starting tag flow…');
 
       // Step 1: Click the first queue item to open it (3 seconds)
       setTimeout(() => {
-        console.log('1️⃣ Clicking item:', firstLink);
+        _log('1️⃣ Clicking item:', firstLink);
         firstLink.click();
       }, STEP_DELAY * 1);
 
       // Step 2: Press 'm' to open the command menu (6 seconds)
       setTimeout(() => {
-        console.log('2️⃣ Sending key "m"');
+        _log('2️⃣ Sending key "m"');
         sendKey('m');
       }, STEP_DELAY * 2);
 
       // Step 3: Find and click the Ghostreader button (9 seconds)
       setTimeout(() => {
-        console.log('3️⃣ Finding "Invoke Ghostreader"');
+        _log('3️⃣ Finding "Invoke Ghostreader"');
         // Search all <span> elements for one containing "Invoke Ghostreader"
         const btn = Array.from(document.querySelectorAll('span'))
                          .find(s => s.textContent.includes('Invoke Ghostreader'));
-        console.log('   →', btn);
+        _log('   →', btn);
         if (btn) btn.click();
-        else console.warn('   Ghostreader button not found');
+        else _log('   Ghostreader button not found');
       }, STEP_DELAY * 3);
 
       // Step 4: Enter "ta" tag in the command palette input (12 seconds)
       setTimeout(() => {
-        console.log('4️⃣ Filling tag input');
+        _log('4️⃣ Filling tag input');
         const inp = document.querySelector('#cp-input');
-        console.log('   →', inp);
+        _log('   →', inp);
         if (inp) {
           inp.value = 'ta';
           // Trigger input event so Readwise's UI reacts to the change
           inp.dispatchEvent(new Event('input', { bubbles: true }));
         } else {
-          console.warn('   #cp-input not found');
+          _log('   #cp-input not found');
         }
       }, STEP_DELAY * 4);
 
       // Step 5: Click the action row to confirm the tag (15 seconds)
       setTimeout(() => {
-        console.log('5️⃣ Clicking .palette-action-row');
+        _log('5️⃣ Clicking .palette-action-row');
         const row = document.querySelector('.palette-action-row');
-        console.log('   →', row);
+        _log('   →', row);
         if (row) row.click();
-        else console.warn('   .palette-action-row not found');
+        else _log('   .palette-action-row not found');
       }, STEP_DELAY * 5);
 
       // Step 6: Reload the queue page to process next item (18 seconds)
       setTimeout(() => {
-        console.log('6️⃣ Flow complete – reloading queue page');
+        _log('6️⃣ Flow complete – reloading queue page');
         window.location.href = START_URL;
         resolve();
       }, STEP_DELAY * 6);
@@ -130,38 +112,33 @@
    * If no items found within timeout, assume queue is empty and stop
    */
   (async function run() {
-    let firstLink;
-    try {
-      console.log('📋 Waiting for next item link…');
-      // Wait for the first queue item to appear on page
-      firstLink = await waitFor('li > a');
+    _log('📋 Waiting for next item link…');
+    // Poll for the first queue item to appear on page; give up after POLL_TIMEOUT
+    // (means the queue is empty).
+    const endTime = Date.now() + POLL_TIMEOUT;
+    let firstLink = null;
+    while (!firstLink && Date.now() <= endTime) {
+      firstLink = document.querySelector('li > a');
+      if (!firstLink) await new Promise((r) => setTimeout(r, POLL_INT));
     }
-    catch (err) {
-      // Timeout means no items found - queue is empty
-      console.log('✅ Queue empty (no li > a found):', err);
+    if (!firstLink) {
+      _log('✅ Queue empty (no li > a found)');
       return;
     }
 
     // Item found - begin the tagging automation
-    console.log('✅ Found an item – commencing tag flow.');
+    _log('✅ Found an item – commencing tag flow.');
     await doTagFlow(firstLink);
   })();
 
-  // Hub integration: event-only protocol (cross-realm safe)
-  (function () {
-    const meta = {
+  // Hub integration: declare via the shared client (no commands/features)
+  if (typeof window.FMHubClient !== 'undefined') {
+    window.FMHubClient.connect({
       id: 'readwise-auto-tag-loop',
-      name: 'Readwise Auto-Tag Loop (Simple Reload)',
-      version: '0.6',
+      description: 'Invoke Ghostreader & apply "ta" tag, then reload queue page until empty',
       updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Readwise%20Auto-Tag%20Loop%20(Simple%20Reload).user.js',
       downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Readwise%20Auto-Tag%20Loop%20(Simple%20Reload).user.js',
-      description: 'Invoke Ghostreader & apply "ta" tag, then reload queue page until empty',
-    };
-    function _emit() {
-      document.dispatchEvent(new CustomEvent('fmhub:declareScript', { detail: JSON.stringify(meta) }));
-    }
-    _emit();
-    document.addEventListener('fmhub:hubReady', _emit);
-  })();
+    });
+  }
 
 })();

@@ -3,8 +3,9 @@
 // @version      0.10
 // @description  Add command menu to Confluence pages
 // @author       cam-barts
-// @match        *://*/wiki/*
+// @match        https://*.atlassian.net/wiki/*
 // @grant        none
+// @require      FireMonkey Hub Client
 // @updateURL    https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Base.user.js
 // @downloadURL  https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Base.user.js
 // ==/UserScript==
@@ -31,46 +32,25 @@
   }
   _log('script loaded');
 
-  // ── FMHub event-protocol helper (inline, cross-realm safe) ─────────
+  // ── Local command registry (drives the standalone fallback menu) ───
 
   const _cmds = new Map();
-  const _scripts = [];
-  let _hubSeen = false;
 
-  function _emit(t, p) {
-    document.dispatchEvent(new CustomEvent('fmhub:' + t, {
-      detail: JSON.stringify(p || {})
-    }));
-  }
+  // ── Hub registration via the shared client ──────────────────────────
 
-  document.addEventListener('fmhub:invoke', function (e) {
-    try {
-      const { id } = JSON.parse(e.detail || '{}');
-      const c = _cmds.get(id);
-      if (c && typeof c.cb === 'function') {
-        try { c.cb(); } catch (err) { console.error(TAG, 'callback error', err); }
-      }
-    } catch { }
-  });
-
-  document.addEventListener('fmhub:hubReady', function () {
-    _log('fmhub:hubReady received — re-emitting registrations');
-    _hubSeen = true;
+  let _client = null;
+  if (typeof window.FMHubClient !== 'undefined') {
+    _client = window.FMHubClient.connect({
+      id: 'confluence-menu-base',
+      description: 'Add command menu to Confluence pages',
+      updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Base.user.js',
+      downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Base.user.js',
+    });
     // Hub took over: tear down standalone menu if it was rendered.
-    if (_standaloneMenu) { _standaloneMenu.remove(); _standaloneMenu = null; }
-    for (const [id, c] of _cmds) _emit('registerCommand', { id, ...c.meta });
-    for (const s of _scripts) _emit('declareScript', s);
-  });
-
-  function _hubDeclareScript(c) {
-    if (!c || !c.id) return;
-    const p = {
-      id: c.id, name: c.name, version: c.version,
-      updateURL: c.updateURL || '', downloadURL: c.downloadURL || '',
-      description: c.description || '', upstreamURL: c.upstreamURL || null,
-    };
-    _scripts.push(p);
-    _emit('declareScript', p);
+    _client.onHubSeen(function () {
+      _log('hub seen - tearing down standalone menu');
+      if (_standaloneMenu) { _standaloneMenu.remove(); _standaloneMenu = null; }
+    });
   }
 
   function _hubRegisterCommand(c) {
@@ -81,13 +61,19 @@
       enabled: c.enabled !== false,
     };
     _cmds.set(c.id, { cb: c.callback, meta });
-    _emit('registerCommand', { id: c.id, ...meta });
+    if (!_client) {
+      return {
+        unregister() { _cmds.delete(c.id); },
+        setEnabled(v) { const e = _cmds.get(c.id); if (e) e.meta.enabled = v; },
+      };
+    }
+    const handle = _client.registerCommand({ id: c.id, ...meta, callback: c.callback });
     return {
-      unregister() { _cmds.delete(c.id); _emit('unregisterCommand', { id: c.id }); },
+      unregister() { _cmds.delete(c.id); handle.unregister(); },
       setEnabled(v) {
         const e = _cmds.get(c.id);
         if (e) e.meta.enabled = v;
-        _emit('setCommandEnabled', { id: c.id, enabled: v });
+        handle.setEnabled(v);
       },
     };
   }
@@ -145,8 +131,8 @@
 
   // After 2s, if Hub never announced itself, fall back to standalone DOM.
   setTimeout(function () {
-    if (!_hubSeen && _cmds.size > 0) {
-      _log('Hub not detected after 2s — rendering standalone menu');
+    if (!(_client && _client.hubSeen()) && _cmds.size > 0) {
+      _log('Hub not detected after 2s - rendering standalone menu');
       _renderStandalone();
     }
   }, 2000);
@@ -174,15 +160,4 @@
       };
     },
   };
-
-  // ── Self-declare to the Hub ────────────────────────────────────────
-
-  _hubDeclareScript({
-    id: 'confluence-menu-base',
-    name: 'Confluence Menu Base',
-    version: '0.10',
-    updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Base.user.js',
-    downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Base.user.js',
-    description: 'Add command menu to Confluence pages',
-  });
 })();

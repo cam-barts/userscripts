@@ -1,58 +1,132 @@
 // ==UserScript==
 // @name         FireMonkey Hub
-// @version      0.8
+// @version      0.9
 // @description  Unified floating action hub for all FireMonkey userscripts
 // @author       cam-barts
 // @match        *://*/*
 // @run-at       document-idle
-// @grant        none
+// @grant        GM.xmlHttpRequest
+// @grant        GM.setValue
+// @grant        GM.getValue
+// @grant        GM.openInTab
+// @grant        GM.notification
+// @grant        GM.registerMenuCommand
+// @grant        GM.addValueChangeListener
 // @updateURL    https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/FireMonkey%20Hub.user.js
 // @downloadURL  https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/FireMonkey%20Hub.user.js
 // ==/UserScript==
 
-(function () {
+// Architecture
+// ------------
+// One script, one realm. The Hub owns both the UI and GM storage; there is no
+// separate Backend and no request/response RPC. That removes the class of races
+// the split design had (declarations queued against a backend that had not
+// answered yet, a one-shot readiness latch, a tab-lifetime state cache).
+//
+//  * Storage is truth. `fmhub.state.v1` is the only authoritative copy. Every
+//    mutation is read-modify-write through `withState()`, which serialises
+//    writes WITHIN THIS TAB so concurrent declarations cannot clobber each
+//    other. Cross-tab, a remote write landing inside another tab's
+//    load→save window can still lose (last-writer-wins); the window is
+//    milliseconds instead of the old tab-lifetime cache, and
+//    GM.addValueChangeListener re-syncs the UI afterwards, but it is not
+//    zero. `_stateCache` exists only so render functions can be synchronous.
+//  * Symmetric handshake. Consumers loading first hear the startup
+//    `fmhub:hubReady` broadcast; consumers loading later emit `fmhub:ping` and
+//    get a `fmhub:hubReady` back. Re-declaration is a keyed upsert, so any
+//    number of hubReady events converge on the same state.
+//  * Ordering. All listeners are registered synchronously, before the first
+//    await. State load, self-declare and the hubReady broadcast happen after,
+//    so a declaration triggered by hubReady always reaches storage.
+//
+// Consumer protocol (JSON-string CustomEvent detail, cross-realm safe):
+//   in : fmhub:declareScript, fmhub:registerCommand, fmhub:unregisterCommand,
+//        fmhub:setCommandEnabled, fmhub:registerFeature, fmhub:setFeatureEnabled,
+//        fmhub:ping
+//   out: fmhub:hubReady, fmhub:featureChanged, fmhub:invoke
+
+(async function () {
   'use strict';
 
   // ── Debug Logger ───────────────────────────────────────────────────
   if (typeof window.__FMHUB_DEBUG__ === 'undefined') window.__FMHUB_DEBUG__ = true;
   function _dbg(...args) {
     if (!window.__FMHUB_DEBUG__) return;
-    try { console.log('[fmhub:hub]', ...args); } catch { }
+    try { console.log('[fmhub]', ...args); } catch { }
   }
   _dbg('script loaded, location=', location.href);
 
-  // ── Bridge to backend ──────────────────────────────────────────────
+  // ── State shape ────────────────────────────────────────────────────
 
-  let _reqId = 0;
-  let _backendAlive = false;
+  const STATE_KEY = 'fmhub.state.v1';
+  const SELF_ID = 'firemonkey-hub';
+  const SELF_URL = 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/FireMonkey%20Hub.user.js';
+  const STALE_MS = 21600000;   // 6h before an automatic update check is worth it
+
+  const DEFAULT_STATE = {
+    features: {},
+    scripts: {},
+    repo: {
+      url: 'https://github.com/cam-barts/userscripts',
+      branch: 'main',
+      lastCheckedAt: null,
+      lastDiscoveredAt: null,
+      knownPaths: [],
+      ignored: [],
+    },
+    ui: { position: null, collapsed: true, lastTab: 0 },
+  };
+
+  // UI-only mirror of storage. Never authoritative: read it to render, never to
+  // decide what to persist.
+  let _stateCache = null;
+
   let _readyResolve;
   const _ready = new Promise(r => (_readyResolve = r));
-  let _stateCache = null;
-  const _localScripts = {};
 
-  function _request(type, payload = {}) {
-    const id = ++_reqId;
-    _dbg('_request →', type, 'id=', id);
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        document.removeEventListener('fmhub:response:' + id, handler);
-        _dbg('_request TIMEOUT', type, 'id=', id);
-        reject(new Error(`fmhub timeout: ${type}`));
-      }, 8000);
-      function handler(e) {
-        clearTimeout(timer);
-        try {
-          const { ok, data, error } = JSON.parse(e.detail);
-          _dbg('_request ←', type, 'id=', id, 'ok=', ok, error ? ('err=' + error) : '');
-          if (ok) resolve(data);
-          else reject(new Error(error || 'request failed'));
-        } catch (err) { _dbg('_request parse error', type, err); reject(new Error('parse error')); }
-      }
-      document.addEventListener('fmhub:response:' + id, handler, { once: true });
-      document.dispatchEvent(new CustomEvent('fmhub:request', {
-        detail: JSON.stringify({ id, type, payload })
-      }));
-    });
+  // UI handles, declared early so event handlers can never hit the TDZ.
+  let _host, _shadow, _btnEl, _panelEl, _contentEl;
+  let _panelOpen = false;
+  let _activeTab = 0;
+  let _dragOffX = 0, _dragOffY = 0;
+  let _panelX = null, _panelY = null;
+  let _btnX = null, _btnY = null;
+
+  // ── Storage ────────────────────────────────────────────────────────
+
+  async function loadState() {
+    const raw = await GM.getValue(STATE_KEY);
+    if (!raw) return structuredClone(DEFAULT_STATE);
+    try {
+      const saved = JSON.parse(raw);
+      return {
+        features: saved.features || {},
+        scripts: saved.scripts || {},
+        repo: { ...DEFAULT_STATE.repo, ...(saved.repo || {}) },
+        ui: { ...DEFAULT_STATE.ui, ...(saved.ui || {}) },
+      };
+    } catch {
+      return structuredClone(DEFAULT_STATE);
+    }
+  }
+
+  async function saveState(state) {
+    await GM.setValue(STATE_KEY, JSON.stringify(state));
+  }
+
+  // Serialised read-modify-write. `fn(state)` mutates in place; returning false
+  // means "nothing changed, skip the write". Serialisation matters: several
+  // consumers declare themselves within the same tick and an unqueued
+  // load/save pair would drop all but the last.
+  let _writeChain = Promise.resolve();
+  function withState(fn) {
+    _writeChain = _writeChain.then(async () => {
+      const s = await loadState();
+      const changed = await fn(s);
+      if (changed !== false) await saveState(s);
+      _stateCache = s;
+    }).catch((err) => { _dbg('state write failed:', err && err.message); });
+    return _writeChain;
   }
 
   // ── Event protocol (cross-realm safe; JSON-string detail only) ─────
@@ -75,23 +149,13 @@
   const _commands = new Map();
   const _features = new Map();
 
-  function _featureEnabled(id) {
+  // `cache` lets callers evaluate against a snapshot (used to diff before/after
+  // a state refresh); omit it to use the live UI cache.
+  function _featureEnabled(id, cache) {
     const reg = _features.get(id);
     if (!reg) return true;
-    if (!_stateCache) return reg.defaultEnabled !== false;
-    const f = _stateCache.features[id];
-    if (!f) return reg.defaultEnabled !== false;
-    const host = location.hostname;
-    if (reg.scope === 'origin' && host && f.origins && f.origins[host] !== undefined) {
-      return f.origins[host];
-    }
-    return f.enabled !== undefined ? f.enabled : (reg.defaultEnabled !== false);
-  }
-
-  function _featureEnabledFromCache(id, featureCache) {
-    const reg = _features.get(id);
-    if (!reg) return true;
-    const f = featureCache[id];
+    const src = cache || _stateCache?.features;
+    const f = src && src[id];
     if (!f) return reg.defaultEnabled !== false;
     const host = location.hostname;
     if (reg.scope === 'origin' && host && f.origins && f.origins[host] !== undefined) return f.origins[host];
@@ -102,38 +166,171 @@
     _emit('featureChanged', { id, enabled: _featureEnabled(id) });
   }
 
-  // ── Internal handlers (used by both event listeners and same-realm API) ─
+  // ── State mutations (all read-modify-write) ────────────────────────
 
-  function _internalDeclareScript(config) {
-    if (!config || !config.id) return;
-    _dbg('declareScript', config.id, 'v' + config.version);
-    const prev = _localScripts[config.id] || {};
-    _localScripts[config.id] = {
+  // Keyed upsert. Returns false when the stored entry is already identical, so
+  // a script re-declaring itself on every page load costs zero writes.
+  function _upsertScript(state, id, config) {
+    const prev = state.scripts[id] || {};
+    const next = {
       name: config.name,
       version: config.version,
       updateURL: config.updateURL || '',
       downloadURL: config.downloadURL || '',
       description: config.description || '',
       upstreamURL: config.upstreamURL || null,
-      lastSeen: new Date().toISOString(),
       latestKnown: prev.latestKnown || null,
       dismissedUpdates: prev.dismissedUpdates || [],
     };
-    if (_backendAlive) {
-      _request('declareScript', {
-        scriptId: config.id,
-        name: config.name,
-        version: config.version,
-        updateURL: config.updateURL,
-        downloadURL: config.downloadURL,
-        description: config.description || '',
-        upstreamURL: config.upstreamURL || null,
-      }).catch((err) => { _dbg('declareScript backend failed', config.id, err && err.message); });
-    } else {
-      _dbg('declareScript queued locally (backend not alive)', config.id);
-    }
+    if (JSON.stringify(prev) === JSON.stringify(next)) return false;
+    state.scripts[id] = next;
+    return true;
+  }
+
+  function declareScript(config) {
+    if (!config || !config.id) return Promise.resolve();
+    _dbg('declareScript', config.id, 'v' + config.version);
+    return withState((s) => _upsertScript(s, config.id, config)).then(() => {
+      _updateBadge();
+      _renderActiveTab();
+    });
+  }
+
+  function setFeatureEnabled(id, enabled, scope) {
+    return withState((s) => {
+      if (!s.features[id]) s.features[id] = { enabled: true, origins: {} };
+      const f = s.features[id];
+      if (scope === 'origin') {
+        f.origins = f.origins || {};
+        f.origins[location.hostname] = enabled;
+      } else {
+        f.enabled = enabled;
+      }
+      f.updatedAt = new Date().toISOString();
+    }).then(() => {
+      _broadcastFeature(id);
+      _renderActiveTab();
+    });
+  }
+
+  function clearFeatureOrigin(id) {
+    return withState((s) => {
+      const f = s.features[id];
+      if (!f || !f.origins || f.origins[location.hostname] === undefined) return false;
+      delete f.origins[location.hostname];
+    }).then(() => {
+      _broadcastFeature(id);
+      _renderActiveTab();
+    });
+  }
+
+  function setUI(patch) {
+    return withState((s) => { Object.assign(s.ui, patch); });
+  }
+
+  function dismissUpdate(id, version) {
+    return withState((s) => {
+      const script = s.scripts[id];
+      if (!script) return false;
+      if (!script.dismissedUpdates) script.dismissedUpdates = [];
+      if (script.dismissedUpdates.includes(version)) return false;
+      script.dismissedUpdates.push(version);
+    }).then(() => { _updateBadge(); _renderActiveTab(); });
+  }
+
+  function ignoreRepoScript(path) {
+    return withState((s) => {
+      if (s.repo.ignored.includes(path)) return false;
+      s.repo.ignored.push(path);
+    }).then(_renderActiveTab);
+  }
+
+  function setRepoConfig(url, branch) {
+    return withState((s) => { s.repo.url = url; s.repo.branch = branch; });
+  }
+
+  function resetState() {
+    return withState((s) => { Object.assign(s, structuredClone(DEFAULT_STATE)); })
+      .then(() => { _updateBadge(); _renderActiveTab(); });
+  }
+
+  // ── Network ────────────────────────────────────────────────────────
+
+  function gmFetch(url, options = {}) {
+    return new Promise((resolve, reject) => {
+      GM.xmlHttpRequest({
+        method: options.method || 'GET',
+        url,
+        headers: options.headers || {},
+        onload(r) { resolve({ status: r.status, responseText: r.responseText }); },
+        onerror() { reject(new Error('Network error')); },
+        ontimeout() { reject(new Error('Timeout')); },
+      });
+    });
+  }
+
+  function getResponseText(r) {
+    return (r && typeof r.responseText === 'string') ? r.responseText : '';
+  }
+
+  // Fetches each declared script's @updateURL (raw.githubusercontent.com, not
+  // the rate-limited API) and records any newer @version.
+  async function checkUpdates() {
+    const snapshot = await loadState();
+    const entries = Object.entries(snapshot.scripts);
+    if (!entries.length) return [];
+
+    const found = new Map();
+    await Promise.all(entries.map(async ([id, script]) => {
+      if (!script.updateURL) return;
+      try {
+        const text = getResponseText(await gmFetch(script.updateURL));
+        if (!text) return;
+        const metaEnd = text.search(/==\/UserScript==/i);
+        const header = metaEnd > 0 ? text.slice(0, metaEnd + 20) : text.slice(0, 2000);
+        const m = header.match(/^\/\/ @version\s+(\S+)/m);
+        if (!m) return;
+        const remoteVersion = m[1].trim();
+        const newer = remoteVersion.localeCompare(
+          script.version, undefined, { numeric: true, sensitivity: 'base' }
+        ) > 0;
+        if (!newer) return;
+        found.set(id, { version: remoteVersion, fetchedAt: new Date().toISOString() });
+      } catch { /* network errors are non-fatal */ }
+    }));
+
+    const results = [];
+    await withState((s) => {
+      for (const [id, latest] of found) {
+        const script = s.scripts[id];
+        if (!script || script.dismissedUpdates?.includes(latest.version)) continue;
+        script.latestKnown = latest;
+        results.push({ id, name: script.name, localVersion: script.version, remoteVersion: latest.version });
+      }
+      s.repo.lastCheckedAt = new Date().toISOString();
+    });
+    _updateBadge();
+    _renderActiveTab();
+    return results;
+  }
+
+  // Manual only: this is the GitHub API call, so it never runs unprompted.
+  async function discoverRepo() {
+    const snapshot = await loadState();
+    const repoPath = snapshot.repo.url.replace('https://github.com/', '').replace(/\/$/, '');
+    const r = await gmFetch(`https://api.github.com/repos/${repoPath}/contents/scripts`);
+    let paths;
+    try {
+      paths = JSON.parse(getResponseText(r)).filter(f => f.name.endsWith('.user.js')).map(f => f.path);
+    } catch { _dbg('discoverRepo: unparseable listing'); return; }
+    await withState((s) => {
+      s.repo.knownPaths = paths;
+      s.repo.lastDiscoveredAt = new Date().toISOString();
+    });
     _renderActiveTab();
   }
+
+  // ── Internal handlers ──────────────────────────────────────────────
 
   // invokeFn is what runs when the user clicks "Run".
   // For cross-realm consumers, it dispatches fmhub:invoke; the consumer's
@@ -180,40 +377,27 @@
     });
   }
 
-  function _internalSetFeatureEnabled(id, enabled, scope) {
-    if (!_stateCache) _stateCache = { features: {}, scripts: {}, repo: {}, ui: {}, rateLimit: {} };
-    if (!_stateCache.features[id]) _stateCache.features[id] = { enabled: true, origins: {} };
-    const host = location.hostname;
-    if (scope === 'origin') {
-      _stateCache.features[id].origins = _stateCache.features[id].origins || {};
-      _stateCache.features[id].origins[host] = enabled;
-    } else {
-      _stateCache.features[id].enabled = enabled;
-    }
-    _broadcastFeature(id);
-    if (_backendAlive) {
-      _request('setFeatureEnabled', { featureId: id, enabled, scope: scope || 'global', origin: host }).catch(() => {});
-    }
-    _renderActiveTab();
-  }
+  // ── Event listeners (registered before any await - see Architecture) ─
 
-  // ── Event listeners (cross-realm registration) ─────────────────────
-
-  _onEvent('declareScript', (p) => _internalDeclareScript(p));
+  _onEvent('declareScript', (p) => declareScript(p));
   _onEvent('registerCommand', (p) => {
     _internalRegisterCommand(p, () => _emit('invoke', { id: p.id }));
   });
   _onEvent('unregisterCommand', (p) => _internalUnregisterCommand(p.id));
   _onEvent('setCommandEnabled', (p) => _internalSetCommandEnabled(p.id, p.enabled));
   _onEvent('registerFeature', (p) => _internalRegisterFeature(p));
-  _onEvent('setFeatureEnabled', (p) => _internalSetFeatureEnabled(p.id, p.enabled, p.scope || 'global'));
+  _onEvent('setFeatureEnabled', (p) => setFeatureEnabled(p.id, p.enabled, p.scope || 'global'));
+  // Symmetric handshake: consumers that load after the Hub ask, and get the
+  // same hubReady the early ones were broadcast. Idempotent: every
+  // re-declaration is a keyed upsert.
+  _onEvent('ping', () => _emit('hubReady'));
 
   // ── Same-realm API (kept minimal for diagnostic / direct access) ───
   // Cross-realm consumers must use the event protocol.
 
   window.FireMonkeyHub = {
     get ready() { return _ready; },
-    declareScript: _internalDeclareScript,
+    declareScript,
     registerCommand(config) {
       if (!config || !config.id) return { unregister() {}, setEnabled() {} };
       _internalRegisterCommand(config, () => {
@@ -244,7 +428,7 @@
       });
       return {
         isEnabled() { return _featureEnabled(config.id); },
-        async setEnabled(val, scope = 'global') { _internalSetFeatureEnabled(config.id, val, scope); },
+        async setEnabled(val, scope = 'global') { await setFeatureEnabled(config.id, val, scope); },
         onChange(cb) { listeners.push(cb); return () => { const i = listeners.indexOf(cb); if (i >= 0) listeners.splice(i, 1); }; },
       };
     },
@@ -253,34 +437,7 @@
     toggleHub() { _panelOpen ? _closePanel() : _openPanel(); },
   };
 
-  window.fmhubDiag = function () {
-    const out = {
-      backendAlive: _backendAlive,
-      stateCacheLoaded: !!_stateCache,
-      commandCount: _commands.size,
-      commandIds: [..._commands.keys()],
-      featureCount: _features.size,
-      featureIds: [..._features.keys()],
-      localScriptIds: Object.keys(_localScripts),
-      backendScriptIds: Object.keys(_stateCache?.scripts || {}),
-      knownPaths: _stateCache?.repo?.knownPaths || [],
-      ignored: _stateCache?.repo?.ignored || [],
-      panelOpen: _panelOpen,
-      activeTab: TABS[_activeTab],
-    };
-    console.log('[fmhub:diag]', out);
-    return out;
-  };
-
   // ── UI ─────────────────────────────────────────────────────────────
-
-  let _host, _shadow, _btnEl, _panelEl, _contentEl;
-  let _panelOpen = false;
-  let _activeTab = 0;
-  let _dragging = false;
-  let _dragOffX = 0, _dragOffY = 0;
-  let _panelX = null, _panelY = null;
-  let _btnX = null, _btnY = null;
 
   const TABS = ['Actions', 'Features', 'Updates', 'Discover', 'Settings'];
   const CSS = `
@@ -306,7 +463,6 @@
     .cnt{overflow-y:auto;flex:1}
     .cnt::-webkit-scrollbar{width:4px}
     .cnt::-webkit-scrollbar-thumb{background:#30363d;border-radius:2px}
-    .no-backend{margin:8px;padding:8px 10px;background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.3);border-radius:4px;color:#f85149;font-size:12px}
     .section{padding:6px 12px 2px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#555;font-weight:600}
     .cmd{display:flex;align-items:center;padding:8px 12px;gap:8px;cursor:pointer}
     .cmd:hover{background:#22252d}
@@ -450,7 +606,6 @@
     const rect = _btnEl.getBoundingClientRect();
     _dragOffX = e.clientX - rect.left;
     _dragOffY = e.clientY - rect.top;
-    _dragging = true;
     let moved = false;
     function onMove(e) {
       moved = true;
@@ -459,13 +614,9 @@
       _setBtnPos(x, y);
     }
     function onUp() {
-      _dragging = false;
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
-      if (moved && _backendAlive) {
-        const pos = { ...((_stateCache?.ui?.position) || {}), btnX: _btnX, btnY: _btnY };
-        _request('setUI', { position: pos }).catch(() => {});
-      }
+      if (moved) setUI({ position: { ...((_stateCache?.ui?.position) || {}), btnX: _btnX, btnY: _btnY } });
       if (!moved) _togglePanel();
     }
     document.addEventListener('mousemove', onMove);
@@ -485,10 +636,7 @@
     function onUp() {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
-      if (_backendAlive) {
-        const pos = { ...((_stateCache?.ui?.position) || {}), panelX: _panelX, panelY: _panelY };
-        _request('setUI', { position: pos }).catch(() => {});
-      }
+      setUI({ position: { ...((_stateCache?.ui?.position) || {}), panelX: _panelX, panelY: _panelY } });
     }
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
@@ -498,13 +646,13 @@
     _panelOpen = true;
     _panelEl.classList.add('open');
     _renderActiveTab();
-    if (_backendAlive) _request('setUI', { collapsed: false }).catch(() => {});
+    setUI({ collapsed: false });
   }
 
   function _closePanel() {
     _panelOpen = false;
     _panelEl.classList.remove('open');
-    if (_backendAlive) _request('setUI', { collapsed: true }).catch(() => {});
+    setUI({ collapsed: true });
   }
 
   function _togglePanel() {
@@ -517,11 +665,11 @@
       btn.classList.toggle('active', j === i);
     });
     _renderActiveTab();
-    if (save && _backendAlive) _request('setUI', { lastTab: i }).catch(() => {});
+    if (save) setUI({ lastTab: i });
   }
 
   function _updateBadge() {
-    if (!_stateCache) return;
+    if (!_stateCache || !_btnEl) return;
     const hasUpdate = Object.values(_stateCache.scripts || {}).some(s =>
       s.latestKnown && !s.dismissedUpdates?.includes(s.latestKnown.version)
     );
@@ -531,12 +679,6 @@
   function _renderActiveTab() {
     if (!_panelEl || !_contentEl || !_panelOpen) return;
     _contentEl.innerHTML = '';
-    if (!_backendAlive) {
-      const warn = document.createElement('div');
-      warn.className = 'no-backend';
-      warn.textContent = 'Backend not detected — install FireMonkey Hub Backend.';
-      _contentEl.appendChild(warn);
-    }
     const renders = [_renderActions, _renderFeatures, _renderUpdates, _renderDiscover, _renderSettings];
     renders[_activeTab]?.();
   }
@@ -583,7 +725,7 @@
         e.currentTarget.textContent = body.classList.contains('open')
           ? `▾ Disabled (${disabled.length})` : `▸ Disabled (${disabled.length})`;
       });
-      for (const [g, [id, cmd]] of disabled) {
+      for (const [, [id, cmd]] of disabled) {
         disc.querySelector('.disclosure-body').appendChild(_cmdRow(id, cmd, false));
       }
       _contentEl.appendChild(disc);
@@ -629,9 +771,7 @@
       const row = document.createElement('div');
       row.className = 'feat';
       const globalEnabled = _stateCache?.features[id]?.enabled ?? feat.defaultEnabled;
-      const toggle = _mkToggle(globalEnabled, (val) => {
-        _internalSetFeatureEnabled(id, val, 'global');
-      });
+      const toggle = _mkToggle(globalEnabled, (val) => setFeatureEnabled(id, val, 'global'));
       const label = document.createElement('span');
       label.className = 'feat-label';
       label.textContent = feat.label;
@@ -648,37 +788,20 @@
       }
       if (feat.scope === 'origin') {
         const host = location.hostname;
-        const overrides = _stateCache?.features[id]?.origins || {};
-        const siteVal = overrides[host];
+        const siteVal = (_stateCache?.features[id]?.origins || {})[host];
         const siteRow = document.createElement('div');
         siteRow.className = 'feat-site';
         siteRow.textContent = host + ': ';
         const siteBtn = document.createElement('span');
         siteBtn.className = 'feat-site-val';
-        if (siteVal === undefined) {
-          siteBtn.textContent = 'inherits global';
-        } else {
-          siteBtn.textContent = siteVal ? 'ON (override)' : 'OFF (override)';
-        }
+        siteBtn.textContent = siteVal === undefined
+          ? 'inherits global'
+          : (siteVal ? 'ON (override)' : 'OFF (override)');
+        // Cycle: inherit → opposite of global → back to inherit.
         siteBtn.addEventListener('click', () => {
-          if (!_stateCache) _stateCache = { features: {}, scripts: {}, repo: {}, ui: {}, rateLimit: {} };
-          if (!_stateCache.features[id]) _stateCache.features[id] = { enabled: true, origins: {} };
-          let newVal;
-          if (siteVal === undefined) {
-            newVal = !globalEnabled;
-            _stateCache.features[id].origins[host] = newVal;
-          } else if (siteVal !== globalEnabled) {
-            delete _stateCache.features[id].origins[host];
-            newVal = globalEnabled;
-          } else {
-            newVal = !siteVal;
-            _stateCache.features[id].origins[host] = newVal;
-          }
-          _broadcastFeature(id);
-          if (_backendAlive) {
-            _request('setFeatureEnabled', { featureId: id, enabled: newVal, scope: 'origin', origin: host }).catch(() => {});
-          }
-          _renderActiveTab();
+          if (siteVal === undefined) setFeatureEnabled(id, !globalEnabled, 'origin');
+          else if (siteVal !== globalEnabled) clearFeatureOrigin(id);
+          else setFeatureEnabled(id, !siteVal, 'origin');
         });
         siteRow.appendChild(siteBtn);
         row.appendChild(siteRow);
@@ -701,48 +824,38 @@
     return wrap;
   }
 
-  function _allDeclaredScripts() {
-    const merged = { ..._localScripts };
-    const remote = _stateCache?.scripts || {};
-    for (const [id, s] of Object.entries(remote)) {
-      merged[id] = { ...(merged[id] || {}), ...s };
-    }
-    return merged;
-  }
-
   function _normalizeRawURL(url) {
     if (!url) return '';
     const stripped = url.replace('/refs/heads/', '/');
     try { return decodeURIComponent(stripped); } catch { return stripped; }
   }
 
-  function _renderUpdates() {
+  function _tsHeader(iso, btnLabel, onClick) {
     const hdr = document.createElement('div');
     hdr.className = 'upd-hdr';
-    const ts = _stateCache?.repo?.lastCheckedAt
-      ? 'Checked: ' + new Date(_stateCache.repo.lastCheckedAt).toLocaleString()
-      : 'Never checked';
     const tsEl = document.createElement('span');
     tsEl.className = 'upd-hdr-ts';
-    tsEl.textContent = ts;
-    const checkBtn = document.createElement('button');
-    checkBtn.className = 'sbtn';
-    checkBtn.textContent = 'Check now';
-    checkBtn.addEventListener('click', async () => {
-      checkBtn.textContent = '…';
-      checkBtn.disabled = true;
-      try {
-        await _request('checkUpdates', { force: true });
-      } catch { }
-      checkBtn.textContent = 'Check now';
-      checkBtn.disabled = false;
+    tsEl.textContent = iso ? 'Checked: ' + new Date(iso).toLocaleString() : 'Never checked';
+    const btn = document.createElement('button');
+    btn.className = 'sbtn';
+    btn.textContent = btnLabel;
+    btn.addEventListener('click', async () => {
+      btn.textContent = '…';
+      btn.disabled = true;
+      try { await onClick(); } catch { }
+      btn.textContent = btnLabel;
+      btn.disabled = false;
       _renderActiveTab();
     });
     hdr.appendChild(tsEl);
-    hdr.appendChild(checkBtn);
-    _contentEl.appendChild(hdr);
+    hdr.appendChild(btn);
+    return hdr;
+  }
 
-    const scripts = Object.entries(_allDeclaredScripts());
+  function _renderUpdates() {
+    _contentEl.appendChild(_tsHeader(_stateCache?.repo?.lastCheckedAt, 'Check now', checkUpdates));
+
+    const scripts = Object.entries(_stateCache?.scripts || {});
     if (!scripts.length) {
       const el = document.createElement('div');
       el.className = 'empty';
@@ -763,7 +876,7 @@
       if (hasUpdate) {
         ver.innerHTML = `v${script.version} → <span class="new">v${latest.version} available</span>`;
       } else {
-        ver.textContent = `v${script.version} — up to date`;
+        ver.textContent = `v${script.version} - up to date`;
       }
       row.appendChild(name);
       row.appendChild(ver);
@@ -773,20 +886,11 @@
         const updateBtn = document.createElement('button');
         updateBtn.className = 'sbtn primary';
         updateBtn.textContent = 'Update';
-        updateBtn.addEventListener('click', () => {
-          if (_backendAlive) _request('openInTab', { url: script.downloadURL }).catch(() => {});
-        });
+        updateBtn.addEventListener('click', () => GM.openInTab(script.downloadURL, { active: true }));
         const dismissBtn = document.createElement('button');
         dismissBtn.className = 'sbtn';
         dismissBtn.textContent = 'Dismiss';
-        dismissBtn.addEventListener('click', () => {
-          if (_backendAlive) _request('dismissUpdate', { scriptId: id, version: latest.version }).catch(() => {});
-          if (_stateCache?.scripts[id]) {
-            if (!_stateCache.scripts[id].dismissedUpdates) _stateCache.scripts[id].dismissedUpdates = [];
-            _stateCache.scripts[id].dismissedUpdates.push(latest.version);
-          }
-          _renderActiveTab();
-        });
+        dismissBtn.addEventListener('click', () => dismissUpdate(id, latest.version));
         acts.appendChild(updateBtn);
         acts.appendChild(dismissBtn);
         row.appendChild(acts);
@@ -797,43 +901,19 @@
   }
 
   function _renderDiscover() {
-    const hdr = document.createElement('div');
-    hdr.className = 'upd-hdr';
-    const ts = _stateCache?.repo?.lastCheckedAt
-      ? 'Checked: ' + new Date(_stateCache.repo.lastCheckedAt).toLocaleString()
-      : 'Never checked';
-    const tsEl = document.createElement('span');
-    tsEl.className = 'upd-hdr-ts';
-    tsEl.textContent = ts;
-    const checkBtn = document.createElement('button');
-    checkBtn.className = 'sbtn';
-    checkBtn.textContent = 'Refresh';
-    checkBtn.addEventListener('click', async () => {
-      checkBtn.textContent = '…';
-      checkBtn.disabled = true;
-      try { await _request('discoverRepo'); } catch { }
-      checkBtn.textContent = 'Refresh';
-      checkBtn.disabled = false;
-      _renderActiveTab();
-    });
-    hdr.appendChild(tsEl);
-    hdr.appendChild(checkBtn);
-    _contentEl.appendChild(hdr);
+    _contentEl.appendChild(_tsHeader(_stateCache?.repo?.lastDiscoveredAt, 'Refresh', discoverRepo));
 
-    const allDeclared = _allDeclaredScripts();
     const installedURLs = new Set(
-      Object.values(allDeclared).map(s => _normalizeRawURL(s.downloadURL)).filter(Boolean)
+      Object.values(_stateCache?.scripts || {}).map(s => _normalizeRawURL(s.downloadURL)).filter(Boolean)
     );
     const ignored = new Set(_stateCache?.repo?.ignored || []);
-    const knownPaths = _stateCache?.repo?.knownPaths || [];
     const repoBase = (_stateCache?.repo?.url || '').replace('https://github.com/', '');
     const branch = _stateCache?.repo?.branch || 'main';
 
-    const discovered = knownPaths.filter(path => {
-      if (ignored.has(path)) return false;
-      const downloadURL = _normalizeRawURL(`https://raw.githubusercontent.com/${repoBase}/${branch}/${path}`);
-      return !installedURLs.has(downloadURL);
-    });
+    const discovered = (_stateCache?.repo?.knownPaths || []).filter(path =>
+      !ignored.has(path) &&
+      !installedURLs.has(_normalizeRawURL(`https://raw.githubusercontent.com/${repoBase}/${branch}/${path}`))
+    );
 
     if (!discovered.length) {
       const el = document.createElement('div');
@@ -843,69 +923,24 @@
       return;
     }
 
-    const bulkRow = document.createElement('div');
-    bulkRow.className = 'upd-hdr';
-    const bulkInfo = document.createElement('span');
-    bulkInfo.className = 'upd-hdr-ts';
-    bulkInfo.textContent = `${discovered.length} undeclared`;
-    const markAllBtn = document.createElement('button');
-    markAllBtn.className = 'sbtn';
-    markAllBtn.textContent = 'Mark all installed';
-    markAllBtn.addEventListener('click', async () => {
-      if (!_backendAlive) return;
-      markAllBtn.disabled = true;
-      markAllBtn.textContent = '…';
-      try { await _request('markAllInstalled', { paths: discovered }); }
-      catch { }
-      markAllBtn.disabled = false;
-      markAllBtn.textContent = 'Mark all installed';
-      _renderActiveTab();
-    });
-    bulkRow.appendChild(bulkInfo);
-    bulkRow.appendChild(markAllBtn);
-    _contentEl.appendChild(bulkRow);
-
     for (const path of discovered) {
       const downloadURL = `https://raw.githubusercontent.com/${repoBase}/${branch}/${path}`;
-      const name = path.split('/').pop().replace('.user.js', '');
       const row = document.createElement('div');
       row.className = 'disc';
       const nameEl = document.createElement('div');
       nameEl.className = 'disc-name';
-      nameEl.textContent = name;
+      nameEl.textContent = path.split('/').pop().replace('.user.js', '');
       const acts = document.createElement('div');
       acts.className = 'disc-acts';
       const installBtn = document.createElement('button');
       installBtn.className = 'sbtn primary';
       installBtn.textContent = 'Install';
-      installBtn.addEventListener('click', () => {
-        if (_backendAlive) _request('openInTab', { url: downloadURL }).catch(() => {});
-      });
-      const markBtn = document.createElement('button');
-      markBtn.className = 'sbtn';
-      markBtn.textContent = 'Already installed';
-      markBtn.title = 'I already have this — track it without re-installing';
-      markBtn.addEventListener('click', async () => {
-        if (!_backendAlive) return;
-        markBtn.disabled = true;
-        markBtn.textContent = '…';
-        try { await _request('markInstalled', { path, downloadURL }); }
-        catch { }
-        _renderActiveTab();
-      });
+      installBtn.addEventListener('click', () => GM.openInTab(downloadURL, { active: true }));
       const ignoreBtn = document.createElement('button');
       ignoreBtn.className = 'sbtn';
       ignoreBtn.textContent = 'Ignore';
-      ignoreBtn.addEventListener('click', () => {
-        if (_stateCache?.repo) {
-          if (!_stateCache.repo.ignored) _stateCache.repo.ignored = [];
-          _stateCache.repo.ignored.push(path);
-        }
-        if (_backendAlive) _request('ignoreRepoScript', { path }).catch(() => {});
-        _renderActiveTab();
-      });
+      ignoreBtn.addEventListener('click', () => ignoreRepoScript(path));
       acts.appendChild(installBtn);
-      acts.appendChild(markBtn);
       acts.appendChild(ignoreBtn);
       row.appendChild(nameEl);
       row.appendChild(acts);
@@ -921,35 +956,19 @@
     repoLabel.textContent = 'Repo URL';
     const repoInput = document.createElement('input');
     repoInput.type = 'text';
-    repoInput.value = _stateCache?.repo?.url || 'https://github.com/cam-barts/userscripts';
+    repoInput.value = _stateCache?.repo?.url || DEFAULT_STATE.repo.url;
 
     const branchLabel = document.createElement('label');
     branchLabel.textContent = 'Branch';
     const branchInput = document.createElement('input');
     branchInput.type = 'text';
-    branchInput.value = _stateCache?.repo?.branch || 'main';
-
-    const capLabel = document.createElement('label');
-    capLabel.textContent = 'Daily GitHub API cap';
-    const capInput = document.createElement('input');
-    capInput.type = 'number';
-    capInput.value = _stateCache?.rateLimit?.dailyCap ?? 8;
-    capInput.min = 1;
-    capInput.max = 60;
+    branchInput.value = _stateCache?.repo?.branch || DEFAULT_STATE.repo.branch;
 
     const saveBtn = document.createElement('button');
     saveBtn.className = 'settings-btn';
     saveBtn.textContent = 'Save settings';
     saveBtn.addEventListener('click', () => {
-      if (_backendAlive) {
-        _request('setRepoConfig', { url: repoInput.value.trim(), branch: branchInput.value.trim() }).catch(() => {});
-        _request('setUI', { rateLimit: { ..._stateCache?.rateLimit, dailyCap: parseInt(capInput.value) || 8 } }).catch(() => {});
-      }
-      if (_stateCache) {
-        _stateCache.repo.url = repoInput.value.trim();
-        _stateCache.repo.branch = branchInput.value.trim();
-        if (_stateCache.rateLimit) _stateCache.rateLimit.dailyCap = parseInt(capInput.value) || 8;
-      }
+      setRepoConfig(repoInput.value.trim(), branchInput.value.trim());
     });
 
     const resetBtn = document.createElement('button');
@@ -957,7 +976,7 @@
     resetBtn.textContent = 'Reset all Hub state';
     resetBtn.addEventListener('click', () => {
       if (confirm('Reset all FireMonkey Hub state? This clears feature toggles, update history, and repo tracking.')) {
-        if (_backendAlive) _request('resetState').catch(() => {});
+        resetState();
       }
     });
 
@@ -965,40 +984,10 @@
     wrap.appendChild(repoInput);
     wrap.appendChild(branchLabel);
     wrap.appendChild(branchInput);
-    wrap.appendChild(capLabel);
-    wrap.appendChild(capInput);
     wrap.appendChild(saveBtn);
     wrap.appendChild(resetBtn);
     _contentEl.appendChild(wrap);
   }
-
-  // ── Backend event listeners ─────────────────────────────────────────
-
-  document.addEventListener('fmhub:hello', () => {
-    _dbg('fmhub:hello received → backend alive');
-    _backendAlive = true;
-  });
-
-  document.addEventListener('fmhub:stateUpdate', (e) => {
-    _dbg('fmhub:stateUpdate received');
-    try {
-      const update = JSON.parse(e.detail);
-      if (!_stateCache) _stateCache = { features: {}, scripts: {}, repo: {}, ui: {}, rateLimit: {} };
-      if (update.features) {
-        const prevFeatures = { ..._stateCache.features };
-        Object.assign(_stateCache.features, update.features);
-        for (const [id] of _features) {
-          const wasEnabled = _featureEnabledFromCache(id, prevFeatures);
-          const isEnabled = _featureEnabled(id);
-          if (wasEnabled !== isEnabled) _broadcastFeature(id);
-        }
-      }
-      if (update.scripts) Object.assign(_stateCache.scripts, update.scripts);
-      if (update.repo) Object.assign(_stateCache.repo, update.repo);
-      _updateBadge();
-      _renderActiveTab();
-    } catch { }
-  });
 
   // ── SPA Nav Resilience ──────────────────────────────────────────────
 
@@ -1009,44 +998,59 @@
   }).observe(document.documentElement, { childList: true, subtree: true });
 
   // ── Init ────────────────────────────────────────────────────────────
+  // Listeners above are live already. Everything below awaits, so any
+  // declaration that arrives from here on is handled by a fully wired Hub.
+
+  _stateCache = await loadState();
+  _dbg('state loaded, scripts=', Object.keys(_stateCache.scripts).length,
+    'features=', Object.keys(_stateCache.features).length);
 
   _createUI();
-  _dbg('UI created, requesting state from backend');
+  _updateBadge();
 
-  // Announce we're ready to accept registrations. Consumers that loaded
-  // before us listen for this and re-emit their declarations.
-  _emit('hubReady', { version: '0.8' });
-  _dbg('dispatched fmhub:hubReady');
-
-  _request('getState').then(state => {
-    _dbg('getState resolved, scripts=', Object.keys(state?.scripts || {}).length, 'features=', Object.keys(state?.features || {}).length);
-    _stateCache = state;
-    _backendAlive = true;
-    _applyStoredPosition();
-    _updateBadge();
-    _readyResolve();
-    // Self-declare so the Hub appears as installed in Updates/Discover.
-    _internalDeclareScript({
-      id: 'firemonkey-hub',
-      name: 'FireMonkey Hub',
-      version: '0.6',
-      updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/FireMonkey%20Hub.user.js',
-      downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/FireMonkey%20Hub.user.js',
-      description: 'Unified floating action hub for all FireMonkey userscripts',
-    });
-    // Re-broadcast feature state for already-registered features now that
-    // we know the persisted enabled state.
-    for (const [id] of _features) _broadcastFeature(id);
-    _renderActiveTab();
-  }).catch((err) => {
-    _dbg('getState FAILED → backend not reachable:', err && err.message);
-    _backendAlive = false;
-    _readyResolve();
-    _renderActiveTab();
+  // Self-declare from GM.info (available without @grant) so the entry can never
+  // drift from the metadata block. _upsertScript no-ops when nothing changed.
+  await declareScript({
+    id: SELF_ID,
+    name: GM.info.script.name,
+    version: GM.info.script.version,
+    updateURL: SELF_URL,
+    downloadURL: SELF_URL,
+    description: GM.info.script.description || '',
   });
 
-  setTimeout(() => {
-    if (!_backendAlive) _dbg('ready timeout — backend never responded');
-    _readyResolve();
-  }, 3000);
+  _readyResolve();
+  for (const [id] of _features) _broadcastFeature(id);
+  _renderActiveTab();
+
+  // Consumers that loaded before us listen for this and re-declare.
+  _emit('hubReady');
+  _dbg('dispatched fmhub:hubReady');
+
+  // Cross-tab awareness. FireMonkey does not fire this for same-tab writes, so
+  // there is no feedback loop with our own saveState.
+  if (typeof GM.addValueChangeListener === 'function') {
+    GM.addValueChangeListener(STATE_KEY, async () => {
+      _stateCache = await loadState();
+      _updateBadge();
+      _renderActiveTab();
+    });
+  }
+
+  GM.registerMenuCommand('FireMonkey Hub: Check for updates', async () => {
+    const results = await checkUpdates();
+    GM.notification({
+      text: results.length
+        ? `${results.length} update(s) available. Open the Hub to update.`
+        : 'All scripts are up to date.',
+    });
+  });
+
+  // Auto-check when stale. The jitter, plus re-reading lastCheckedAt after it,
+  // stops N restored tabs from stampeding the same check.
+  setTimeout(async () => {
+    const s = await loadState();
+    const last = s.repo.lastCheckedAt ? new Date(s.repo.lastCheckedAt).getTime() : 0;
+    if (Date.now() - last > STALE_MS && Object.keys(s.scripts).length) checkUpdates();
+  }, Math.random() * 10000);
 })();

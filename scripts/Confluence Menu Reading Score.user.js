@@ -3,12 +3,14 @@
 // @version      0.8
 // @description  Add command menu to Confluence pages
 // @author       cam-barts
-// @match        *://*/wiki/*
+// @match        https://*.atlassian.net/wiki/*
 // @grant        none
 // @require      Confluence Menu Base
+// @require      FireMonkey Hub Client
 // @updateURL    https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Reading%20Score.user.js
 // @downloadURL  https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Reading%20Score.user.js
 // ==/UserScript==
+
 /**
  * Confluence Menu: Reading Score
  *
@@ -62,7 +64,12 @@
 	 */
 	function calculateReadability() {
 		// Extract all text content from Confluence page
-		const text = document.getElementById("content").textContent;
+		const contentElement = document.getElementById("content");
+		if (!contentElement) {
+			alert("Could not find content element to analyze.");
+			return;
+		}
+		const text = contentElement.textContent;
 		// Split into words and filter out empty strings
 		const wordArray = text.split(" ").filter((word) => word !== "");
 		const wordCount = wordArray.length;
@@ -448,20 +455,14 @@ Sentence Count: ${sentenceCount}
 		callback: toggleHighlighting,
 	});
 
-	// Hub integration: event-only protocol (cross-realm safe)
-	(function () {
-		const meta = {
+	// Hub integration: declare via the shared client (commands go through
+	// FireMonkeyMenu above, which registers them with the Hub itself)
+	if (typeof window.FMHubClient !== 'undefined') {
+		window.FMHubClient.connect({
 			id: 'confluence-reading-score',
-			name: 'Confluence Menu: Reading Score',
-			version: '0.8',
+			description: 'Analyzes readability of Confluence page content with sentence highlighting',
 			updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Reading%20Score.user.js',
 			downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Reading%20Score.user.js',
-			description: 'Analyzes readability of Confluence page content with sentence highlighting',
-		};
-		function _emit() {
-			document.dispatchEvent(new CustomEvent('fmhub:declareScript', { detail: JSON.stringify(meta) }));
-		}
-		_emit();
-		document.addEventListener('fmhub:hubReady', _emit);
-	})();
+		});
+	}
 })();

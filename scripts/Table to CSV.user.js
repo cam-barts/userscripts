@@ -5,9 +5,11 @@
 // @author       cam-barts
 // @match        *://*/*
 // @grant        none
+// @require      FireMonkey Hub Client
 // @updateURL    https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Table%20to%20CSV.user.js
 // @downloadURL  https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Table%20to%20CSV.user.js
 // ==/UserScript==
+
 (function () {
 	"use strict";
 
@@ -203,9 +205,20 @@
 			const info = tableSummary(table, i);
 			const item = document.createElement("button");
 			item.className = "csv-panel-item";
-			item.innerHTML = `<div class="label">Table ${i + 1}</div>
-				<div class="meta">${info.rows} rows × ${info.cols} cols</div>
-				${info.preview ? `<div class="meta">${info.preview}</div>` : ""}`;
+			const label = document.createElement("div");
+			label.className = "label";
+			label.textContent = `Table ${i + 1}`;
+			item.appendChild(label);
+			const dims = document.createElement("div");
+			dims.className = "meta";
+			dims.textContent = `${info.rows} rows × ${info.cols} cols`;
+			item.appendChild(dims);
+			if (info.preview) {
+				const preview = document.createElement("div");
+				preview.className = "meta";
+				preview.textContent = info.preview;
+				item.appendChild(preview);
+			}
 			item.addEventListener("mouseenter", () => highlightTable(table));
 			item.addEventListener("mouseleave", () => clearHighlight());
 			item.addEventListener("click", () => {
@@ -243,99 +256,54 @@
 	});
 
 	// ──── Table detection & observation ────
-	let _hubActive = false;
+	let _hubHandle = null;
 	function updateButtonVisibility() {
-		if (_hubActive) { btn.style.display = 'none'; return; }
+		if (_hubHandle && _hubHandle.hubSeen()) { btn.style.display = 'none'; return; }
 		const tables = document.querySelectorAll("table");
 		btn.style.display = tables.length > 0 ? "flex" : "none";
 	}
 
 	updateButtonVisibility();
 
-	new MutationObserver(() => {
-		updateButtonVisibility();
-		if (typeof _hubHandle !== 'undefined') {
-			const tables = document.querySelectorAll('table');
-			_hubHandle.setEnabled(tables.length > 0);
-		}
-	}).observe(document.body, { childList: true, subtree: true });
+	let _visibilityTimer = null;
+	function queueVisibilityUpdate() {
+		clearTimeout(_visibilityTimer);
+		_visibilityTimer = setTimeout(() => {
+			updateButtonVisibility();
+			if (_hubHandle) {
+				const tables = document.querySelectorAll('table');
+				_hubHandle.setCommandEnabled('table-to-csv.export', tables.length > 0);
+			}
+		}, 500);
+	}
 
-	// ──── Hub integration (event-only protocol) ────
-	let _hubHandle;
-	(function () {
-		const TAG = '[fmhub:table-to-csv]';
-		function _log() {
-			if (window.__FMHUB_DEBUG__ === false) return;
-			try { console.log.apply(console, [TAG].concat([].slice.call(arguments))); } catch (e) {}
-		}
+	new MutationObserver(queueVisibilityUpdate).observe(document.body, { childList: true, subtree: true });
 
-		const _cmds = new Map();
-		const _scripts = [];
-
-		function _emit(t, p) {
-			document.dispatchEvent(new CustomEvent('fmhub:' + t, {
-				detail: JSON.stringify(p || {})
-			}));
-		}
-
-		document.addEventListener('fmhub:invoke', function (e) {
-			try {
-				const { id } = JSON.parse(e.detail || '{}');
-				const c = _cmds.get(id);
-				if (c && typeof c.cb === 'function') {
-					try { c.cb(); } catch (err) { console.error(TAG, err); }
-				}
-			} catch {}
-		});
-
-		function _emitAll() {
-			for (const [id, c] of _cmds) _emit('registerCommand', { id, ...c.meta });
-			for (const s of _scripts) _emit('declareScript', s);
-		}
-
-		document.addEventListener('fmhub:hubReady', function () {
-			_log('fmhub:hubReady — re-emitting');
-			_hubActive = true;
-			btn.style.display = 'none';
-			_emitAll();
-		});
-
+	// ──── Hub integration via the shared client ────
+	if (typeof window.FMHubClient !== 'undefined') {
 		const tables = document.querySelectorAll('table');
-		const cmdMeta = {
-			name: 'Export Table to CSV',
-			tooltip: '',
-			color: '#2563eb',
-			group: 'All Sites',
-			enabled: tables.length > 0,
-		};
-		_cmds.set('table-to-csv.export', {
-			cb: function () {
+		_hubHandle = window.FMHubClient.connect({
+			id: 'table-to-csv',
+			description: 'Detect tables on any page and download as CSV',
+			updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Table%20to%20CSV.user.js',
+			downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Table%20to%20CSV.user.js',
+			commands: [{
+				id: 'table-to-csv.export',
+				name: 'Export Table to CSV',
+				tooltip: '',
+				color: '#2563eb',
+				group: 'All Sites',
+				enabled: tables.length > 0,
+			}],
+			onInvoke(id) {
+				if (id !== 'table-to-csv.export') return;
 				const ts = document.querySelectorAll('table');
 				if (!ts.length) return;
 				if (ts.length === 1) { downloadCsv(tableToCsv(ts[0]), 0); return; }
 				openPanel(ts);
 			},
-			meta: cmdMeta,
 		});
-		_emit('registerCommand', { id: 'table-to-csv.export', ...cmdMeta });
-
-		_hubHandle = {
-			setEnabled(val) {
-				const e = _cmds.get('table-to-csv.export');
-				if (e) e.meta.enabled = val;
-				_emit('setCommandEnabled', { id: 'table-to-csv.export', enabled: val });
-			},
-		};
-
-		const scriptMeta = {
-			id: 'table-to-csv',
-			name: 'Table to CSV',
-			version: '0.7',
-			updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Table%20to%20CSV.user.js',
-			downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Table%20to%20CSV.user.js',
-			description: 'Detect tables on any page and download as CSV',
-		};
-		_scripts.push(scriptMeta);
-		_emit('declareScript', scriptMeta);
-	})();
+		// Hub arrived (now or later): hide the standalone floating button.
+		_hubHandle.onHubSeen(function () { btn.style.display = 'none'; });
+	}
 })();

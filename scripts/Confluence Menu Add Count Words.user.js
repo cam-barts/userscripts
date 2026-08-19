@@ -3,9 +3,10 @@
 // @version      0.7
 // @description  Add command menu to Confluence pages
 // @author       cam-barts
-// @match        *://*/wiki/*
+// @match        https://*.atlassian.net/wiki/*
 // @grant        none
 // @require      Confluence Menu Base
+// @require      FireMonkey Hub Client
 // @updateURL    https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Add%20Count%20Words.user.js
 // @downloadURL  https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Add%20Count%20Words.user.js
 // ==/UserScript==
@@ -57,20 +58,14 @@
     callback: countWords
   });
 
-  // Hub integration: event-only protocol (cross-realm safe)
-  (function () {
-    const meta = {
+  // Hub integration: declare via the shared client (commands go through
+  // FireMonkeyMenu above, which registers them with the Hub itself)
+  if (typeof window.FMHubClient !== 'undefined') {
+    window.FMHubClient.connect({
       id: 'confluence-count-words',
-      name: 'Confluence Menu: Add Count Words',
-      version: '0.7',
+      description: 'Count words on Confluence pages',
       updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Add%20Count%20Words.user.js',
       downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Add%20Count%20Words.user.js',
-      description: 'Count words on Confluence pages',
-    };
-    function _emit() {
-      document.dispatchEvent(new CustomEvent('fmhub:declareScript', { detail: JSON.stringify(meta) }));
-    }
-    _emit();
-    document.addEventListener('fmhub:hubReady', _emit);
-  })();
+    });
+  }
 })();
