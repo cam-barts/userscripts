@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Confluence Tools
-// @version      1.0
+// @version      1.1
 // @description  Word count, readability scores, and complex-sentence highlighting for Confluence pages, from the FireMonkey menu
 // @author       cam-barts
 // @match        https://*.atlassian.net/wiki/*
