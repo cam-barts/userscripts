@@ -33,7 +33,7 @@
 		.csv-panel {
 			position: fixed;
 			bottom: 20px;
-			right: 20px;
+			left: 20px;
 			z-index: 2147483647;
 			background: #fff;
 			border: 1px solid #e5e7eb;
@@ -201,6 +201,10 @@
 	});
 
 	GM_registerMenuCommand("Export table to CSV", () => {
+		if (panelOpen) {
+			closePanel();
+			return;
+		}
 		const tables = document.querySelectorAll("table");
 		if (tables.length === 0) {
 			alert("No tables on this page");
