@@ -39,10 +39,10 @@ https://raw.githubusercontent.com/cam-barts/userscripts/main/styles/your-style.u
 |------------|-------------|------------|---------|
 | [Jira: show customfield IDs on hover](scripts/Jira%20show%20customfield%20IDs%20on%20hover.user.js) | Hover a field label on a Jira issue to see its customfield_xxx ID | Jira (Atlassian) | 0.7 |
 | [GitHub Commit Labels](scripts/GitHub%20Commit%20Labels.user.js) | Colored labels on GitHub commit lists for conventional commit types (feat, fix, docs, etc.) | GitHub | 1.6.8 |
-| [Confluence Tools](scripts/Confluence%20Tools.user.js) | Menu commands for word count, readability scores (ARI, Coleman-Liau, Flesch, SMOG), and Hemingway-style highlighting of hard sentences | Confluence | 1.1 |
+| [Confluence Tools](scripts/Confluence%20Tools.user.js) | Menu commands for word count, readability scores (ARI, Coleman-Liau, Flesch, SMOG), and Hemingway-style highlighting of hard sentences | Confluence | 1.2 |
 | [Jira: Issue-Age Dynamic Highlighter](scripts/Jira%20Age%20Dynamic%20Highlighter.user.js) | Color-code Jira issue rows from green (new) to red (old) by table's oldest issue age | Jira (Atlassian) | 0.7 |
-| [AI Writing Detector](scripts/AI%20Writing%20Detector.user.js) | Menu command that highlights signs of AI-generated writing (vocabulary, style, chatbot artifacts) based on Wikipedia's Signs of AI writing | All sites | 0.9 |
-| [Table to CSV](scripts/Table%20to%20CSV.user.js) | Menu command that downloads a table on the page as CSV (pick one if there are several) | All sites | 0.9 |
+| [AI Writing Detector](scripts/AI%20Writing%20Detector.user.js) | Menu command that highlights signs of AI-generated writing (vocabulary, style, chatbot artifacts) based on Wikipedia's Signs of AI writing | All sites | 0.10 |
+| [Table to CSV](scripts/Table%20to%20CSV.user.js) | Menu command that downloads a table on the page as CSV (pick one if there are several) | All sites | 0.10 |
 
 ## Styles
 
