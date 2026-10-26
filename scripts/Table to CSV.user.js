@@ -4,8 +4,7 @@
 // @description  Detect tables on any page, let the user select one, and download it as CSV
 // @author       cam-barts
 // @match        *://*/*
-// @grant        none
-// @require      FireMonkey Hub Client
+// @grant        GM_registerMenuCommand
 // @updateURL    https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Table%20to%20CSV.user.js
 // @downloadURL  https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Table%20to%20CSV.user.js
 // ==/UserScript==
@@ -31,37 +30,9 @@
 			font-size: 14px;
 			color: #333;
 		}
-		.csv-btn {
-			position: fixed;
-			bottom: 20px;
-			right: 20px;
-			z-index: 2147483647;
-			width: 48px;
-			height: 48px;
-			border-radius: 50%;
-			border: none;
-			background: #2563eb;
-			color: #fff;
-			font-size: 18px;
-			font-weight: bold;
-			cursor: pointer;
-			box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-			display: flex;
-			align-items: center;
-			justify-content: center;
-			transition: background 0.2s;
-		}
-		.csv-btn:hover {
-			background: #1d4ed8;
-		}
-		.csv-btn svg {
-			width: 24px;
-			height: 24px;
-			fill: #fff;
-		}
 		.csv-panel {
 			position: fixed;
-			bottom: 78px;
+			bottom: 20px;
 			right: 20px;
 			z-index: 2147483647;
 			background: #fff;
@@ -98,16 +69,6 @@
 		}
 	`;
 	shadow.appendChild(style);
-
-	// ──── Floating button ────
-	const btn = document.createElement("button");
-	btn.className = "csv-btn";
-	btn.title = "Download table as CSV";
-	btn.innerHTML = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-		<path d="M4 4h6v2H6v3h4v2H6v3h4v2H4V4zm8 0h6v2h-4v3h4v2h-4v3h4v2h-6V4zm-1 14h6v2H11v-2zM5 20h4v2H5v-2zm14-16v12h-2V6h-1V4h3zM7 18l5 4 5-4h-3v-3h-4v3H7z"/>
-	</svg>`;
-	btn.style.display = "none";
-	shadow.appendChild(btn);
 
 	// ──── Panel ────
 	const panel = document.createElement("div");
@@ -231,22 +192,6 @@
 		panelOpen = true;
 	}
 
-	// ──── Button click handler ────
-	btn.addEventListener("click", (e) => {
-		e.stopPropagation();
-		if (panelOpen) {
-			closePanel();
-			return;
-		}
-		const tables = document.querySelectorAll("table");
-		if (tables.length === 0) return;
-		if (tables.length === 1) {
-			downloadCsv(tableToCsv(tables[0]), 0);
-			return;
-		}
-		openPanel(tables);
-	});
-
 	// ──── Close panel on outside click / Escape ────
 	document.addEventListener("click", () => {
 		if (panelOpen) closePanel();
@@ -255,55 +200,16 @@
 		if (e.key === "Escape" && panelOpen) closePanel();
 	});
 
-	// ──── Table detection & observation ────
-	let _hubHandle = null;
-	function updateButtonVisibility() {
-		if (_hubHandle && _hubHandle.hubSeen()) { btn.style.display = 'none'; return; }
+	GM_registerMenuCommand("Export table to CSV", () => {
 		const tables = document.querySelectorAll("table");
-		btn.style.display = tables.length > 0 ? "flex" : "none";
-	}
-
-	updateButtonVisibility();
-
-	let _visibilityTimer = null;
-	function queueVisibilityUpdate() {
-		clearTimeout(_visibilityTimer);
-		_visibilityTimer = setTimeout(() => {
-			updateButtonVisibility();
-			if (_hubHandle) {
-				const tables = document.querySelectorAll('table');
-				_hubHandle.setCommandEnabled('table-to-csv.export', tables.length > 0);
-			}
-		}, 500);
-	}
-
-	new MutationObserver(queueVisibilityUpdate).observe(document.body, { childList: true, subtree: true });
-
-	// ──── Hub integration via the shared client ────
-	if (typeof window.FMHubClient !== 'undefined') {
-		const tables = document.querySelectorAll('table');
-		_hubHandle = window.FMHubClient.connect({
-			id: 'table-to-csv',
-			description: 'Detect tables on any page and download as CSV',
-			updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Table%20to%20CSV.user.js',
-			downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Table%20to%20CSV.user.js',
-			commands: [{
-				id: 'table-to-csv.export',
-				name: 'Export Table to CSV',
-				tooltip: '',
-				color: '#2563eb',
-				group: 'All Sites',
-				enabled: tables.length > 0,
-			}],
-			onInvoke(id) {
-				if (id !== 'table-to-csv.export') return;
-				const ts = document.querySelectorAll('table');
-				if (!ts.length) return;
-				if (ts.length === 1) { downloadCsv(tableToCsv(ts[0]), 0); return; }
-				openPanel(ts);
-			},
-		});
-		// Hub arrived (now or later): hide the standalone floating button.
-		_hubHandle.onHubSeen(function () { btn.style.display = 'none'; });
-	}
+		if (tables.length === 0) {
+			alert("No tables on this page");
+			return;
+		}
+		if (tables.length === 1) {
+			downloadCsv(tableToCsv(tables[0]), 0);
+			return;
+		}
+		openPanel(tables);
+	});
 })();

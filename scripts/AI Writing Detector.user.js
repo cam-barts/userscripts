@@ -4,8 +4,7 @@
 // @description  Highlights signs of AI-generated writing based on Wikipedia's Signs of AI writing
 // @author       cam-barts
 // @match        *://*/*
-// @grant        none
-// @require      FireMonkey Hub Client
+// @grant        GM_registerMenuCommand
 // @updateURL    https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/AI%20Writing%20Detector.user.js
 // @downloadURL  https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/AI%20Writing%20Detector.user.js
 // ==/UserScript==
@@ -279,38 +278,9 @@
       .ai-detect-tooltip .ai-detect-link:hover {
         color: #5dade2;
       }
-      #ai-detect-toggle {
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        width: 44px;
-        height: 44px;
-        border-radius: 50%;
-        background: #1B1D23;
-        color: #ccc;
-        border: 2px solid #555;
-        font-size: 14px;
-        font-weight: bold;
-        cursor: pointer;
-        z-index: 99999;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-        transition: border-color 0.3s, color 0.3s;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      }
-      #ai-detect-toggle:hover {
-        border-color: #888;
-        color: #fff;
-      }
-      #ai-detect-toggle.active {
-        border-color: #f44336;
-        color: #f44336;
-      }
       #ai-detect-summary {
         position: fixed;
-        bottom: 72px;
+        bottom: 20px;
         right: 20px;
         background: #1B1D23;
         color: #ecf0f1;
@@ -322,17 +292,7 @@
         z-index: 99999;
         box-shadow: 0 2px 8px rgba(0,0,0,0.4);
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        pointer-events: none;
-        opacity: 0;
-        visibility: hidden;
-        transition: opacity 0.2s, visibility 0.2s;
         min-width: 180px;
-      }
-      #ai-detect-toggle:hover + #ai-detect-summary,
-      #ai-detect-summary:hover {
-        opacity: 1;
-        visibility: visible;
-        pointer-events: auto;
       }
     `;
 		document.head.appendChild(style);
@@ -389,7 +349,7 @@
 					// Skip our own UI elements
 					if (
 						parent.closest(
-							"#ai-detect-toggle, #ai-detect-summary, .ai-detect-tooltip",
+							"#ai-detect-summary, .ai-detect-tooltip",
 						)
 					) {
 						return NodeFilter.FILTER_REJECT;
@@ -488,7 +448,6 @@
 
 		highlightingEnabled = true;
 		updateSummary(totalMatches, categoryCounts);
-		updateButtonState();
 	}
 
 	// ──── Remove highlights ────
@@ -503,7 +462,6 @@
 		highlightingEnabled = false;
 		document.body.normalize();
 		updateSummary(0, null);
-		updateButtonState();
 	}
 
 	// ──── Toggle ────
@@ -515,13 +473,20 @@
 		}
 	}
 
-	// ──── Summary panel ────
+	// ──── Summary panel (exists only while highlighting is on) ────
 	function updateSummary(total, counts) {
-		const summary = document.getElementById("ai-detect-summary");
-		if (!summary) return;
-		if (!highlightingEnabled || total === 0) {
-			summary.innerHTML =
-				'<div style="color:#95a5a6;">Click to scan page for AI writing signals</div>';
+		let summary = document.getElementById("ai-detect-summary");
+		if (!highlightingEnabled) {
+			if (summary) summary.remove();
+			return;
+		}
+		if (!summary) {
+			summary = document.createElement("div");
+			summary.id = "ai-detect-summary";
+			document.body.appendChild(summary);
+		}
+		if (total === 0) {
+			summary.innerHTML = "<div><strong>No signals found</strong></div>";
 			return;
 		}
 		let html = "<div><strong>" + total + " signals found</strong></div>";
@@ -540,94 +505,5 @@
 		summary.innerHTML = html;
 	}
 
-	// ──── Button state ────
-	function updateButtonState() {
-		const btn = document.getElementById("ai-detect-toggle");
-		if (!btn) return;
-		if (highlightingEnabled) {
-			btn.classList.add("active");
-		} else {
-			btn.classList.remove("active");
-		}
-	}
-
-	// ──── Create toggle button ────
-	function createToggleButton() {
-		injectStyles();
-
-		const btn = document.createElement("button");
-		btn.id = "ai-detect-toggle";
-		btn.textContent = "AI";
-		btn.title = "Toggle AI writing detection";
-		btn.addEventListener("click", toggleHighlighting);
-
-		const summary = document.createElement("div");
-		summary.id = "ai-detect-summary";
-		summary.innerHTML =
-			'<div style="color:#95a5a6;">Click to scan page for AI writing signals</div>';
-
-		document.body.appendChild(btn);
-		document.body.appendChild(summary);
-	}
-
-	// ──── Initialize: register with FireMonkey Hub via the shared client ────
-	(function () {
-		const TAG = '[fmhub:ai-detector]';
-		function _log() {
-			if (window.__FMHUB_DEBUG__ === false) return;
-			try { console.log.apply(console, [TAG].concat([].slice.call(arguments))); } catch (e) {}
-		}
-		_log('script loaded');
-
-		const client = typeof window.FMHubClient === 'undefined' ? null : window.FMHubClient.connect({
-			id: 'ai-writing-detector',
-			description: 'Highlights signs of AI-generated writing',
-			updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/AI%20Writing%20Detector.user.js',
-			downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/AI%20Writing%20Detector.user.js',
-			features: [{
-				id: 'ai-writing-detector',
-				label: 'AI Writing Detector',
-				description: 'Highlights AI-generated writing patterns',
-				scope: 'origin',
-				defaultEnabled: true,
-			}],
-			commands: [{
-				id: 'ai-writing-detector.toggle',
-				name: 'AI: Toggle Highlighting',
-				tooltip: '',
-				color: '#1B1D23',
-				group: 'All Sites',
-				enabled: true,
-			}],
-			onInvoke(id) {
-				if (id === 'ai-writing-detector.toggle') toggleHighlighting();
-			},
-			onFeatureChanged(id, enabled) {
-				if (id === 'ai-writing-detector' && !enabled && highlightingEnabled) removeHighlights();
-			},
-		});
-
-		// Fallback: if Hub never announces (or the client isn't loaded), build
-		// the standalone toggle button.
-		setTimeout(function () {
-			if (!client || !client.hubSeen()) {
-				_log('Hub not detected after 2s - building standalone toggle button');
-				if (document.readyState === 'loading') {
-					document.addEventListener('DOMContentLoaded', createToggleButton);
-				} else {
-					createToggleButton();
-				}
-			}
-		}, 2000);
-
-		// Hub arrived (now or later): tear down the standalone button if built.
-		if (client) {
-			client.onHubSeen(function () {
-				const btn = document.getElementById('ai-detect-toggle');
-				if (btn) btn.remove();
-				const summary = document.getElementById('ai-detect-summary');
-				if (summary) summary.remove();
-			});
-		}
-	})();
+	GM_registerMenuCommand("AI: Toggle highlighting", toggleHighlighting);
 })();

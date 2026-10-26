@@ -1,39 +1,24 @@
 // ==UserScript==
-// @name         Confluence Menu: Reading Score
-// @version      0.8
-// @description  Add command menu to Confluence pages
+// @name         Confluence Tools
+// @version      1.0
+// @description  Word count, readability scores, and complex-sentence highlighting for Confluence pages, from the FireMonkey menu
 // @author       cam-barts
 // @match        https://*.atlassian.net/wiki/*
-// @grant        none
-// @require      Confluence Menu Base
-// @require      FireMonkey Hub Client
-// @updateURL    https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Reading%20Score.user.js
-// @downloadURL  https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Reading%20Score.user.js
+// @grant        GM_registerMenuCommand
+// @updateURL    https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Tools.user.js
+// @downloadURL  https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Tools.user.js
 // ==/UserScript==
 
 /**
- * Confluence Menu: Reading Score
+ * Confluence Tools
  *
- * !  DEPENDENCY: This script requires "Confluence Menu Base" to function.
- *     Install the base script first to enable the menu system.
- *
- * Analyzes the readability of Confluence page content using multiple
- * industry-standard readability metrics. Features hemingwayapp.com-inspired
- * sentence highlighting to identify complex sentences.
- *
- * Usage:
- * - Click "Readability 📰" to see overall page scores
- * - Click "Highlight Sentences 🎨" to toggle sentence highlighting
+ * FireMonkey menu commands for Confluence pages:
+ * - Count words in the page content
+ * - Readability scores using several standard metrics
+ * - Toggle hemingwayapp.com-inspired highlighting of complex sentences
  */
 (function () {
 	"use strict";
-	// Check if FireMonkeyMenu API is available from base script
-	if (typeof window.FireMonkeyMenu === "undefined") {
-		console.error(
-			'Confluence Menu: Reading Score requires "Confluence Menu Base" script to be installed.',
-		);
-		return;
-	}
 	// State management
 	let highlightingEnabled = false;
 	/**
@@ -439,30 +424,16 @@ Sentence Count: ${sentenceCount}
 			highlightSentences();
 		}
 	}
-	// Register commands in the Confluence menu
-	FireMonkeyMenu.registerCommand({
-		enabled: true,
-		name: "Readability 📰",
-		tooltip: "Calculate readability scores for this page",
-		color: "#2196F3",
-		callback: calculateReadability,
-	});
-	FireMonkeyMenu.registerCommand({
-		enabled: true,
-		name: "Highlight Sentences 🎨",
-		tooltip: "Toggle hemingwayapp.com-inspired sentence highlighting",
-		color: "#FF9800",
-		callback: toggleHighlighting,
-	});
-
-	// Hub integration: declare via the shared client (commands go through
-	// FireMonkeyMenu above, which registers them with the Hub itself)
-	if (typeof window.FMHubClient !== 'undefined') {
-		window.FMHubClient.connect({
-			id: 'confluence-reading-score',
-			description: 'Analyzes readability of Confluence page content with sentence highlighting',
-			updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Reading%20Score.user.js',
-			downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Menu%20Reading%20Score.user.js',
-		});
+	/**
+	 * Count words on the current Confluence page
+	 */
+	function countWords() {
+		const contentElement = document.getElementById("content") || document.body;
+		const wordCount = contentElement.innerText.trim().split(/\s+/).length;
+		alert(`Word count: ${wordCount.toLocaleString()}`);
 	}
+
+	GM_registerMenuCommand("Confluence: Count words", countWords);
+	GM_registerMenuCommand("Confluence: Readability score", calculateReadability);
+	GM_registerMenuCommand("Confluence: Toggle sentence highlighting", toggleHighlighting);
 })();

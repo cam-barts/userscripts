@@ -10,7 +10,6 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
-// @require      FireMonkey Hub Client
 // @run-at       document-end
 // @homepageURL  https://github.com/nazdridoy/github-commit-labels
 // @supportURL   https://github.com/nazdridoy/github-commit-labels/issues
@@ -44,8 +43,6 @@ SOFTWARE.
 
 (function() {
     'use strict';
-
-    let _hubHandle = null;
 
     // Detect GitHub theme (dark, light, or dark dimmed)
     function detectTheme() {
@@ -1320,8 +1317,8 @@ SOFTWARE.
         debugLog('Updating theme colors');
         updateThemeColors();
 
-        // Create toggle button if it doesn't exist and is enabled (suppressed when Hub present)
-        if (!(_hubHandle && _hubHandle.hubSeen()) && USER_CONFIG.showFloatingButton !== false) {
+        // Create toggle button if it doesn't exist and is enabled
+        if (USER_CONFIG.showFloatingButton !== false) {
             debugLog('Creating label toggle button');
             createLabelToggle();
         }
@@ -1635,46 +1632,4 @@ SOFTWARE.
             setTimeout(addCommitLabels, 100);
         }
     }, 100));
-
-    // ──── Hub integration via the shared client ────
-    if (typeof window.FMHubClient !== 'undefined') {
-        _hubHandle = window.FMHubClient.connect({
-            id: 'github-commit-labels',
-            description: 'Enhances GitHub commits with beautiful labels for conventional commit types',
-            updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/GitHub%20Commit%20Labels.user.js',
-            downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/GitHub%20Commit%20Labels.user.js',
-            upstreamURL: 'https://github.com/nazdridoy/github-commit-labels',
-            features: [{
-                id: 'github-commit-labels',
-                label: 'GitHub Commit Labels',
-                description: 'Adds conventional commit type labels to GitHub commit lists',
-                scope: 'origin',
-                defaultEnabled: true,
-            }],
-            commands: [{
-                id: 'github-commit-labels.settings',
-                name: 'Commit Label Settings',
-                tooltip: '',
-                color: '#238636',
-                group: 'GitHub',
-                enabled: true,
-            }],
-            onInvoke(id) {
-                if (id === 'github-commit-labels.settings') createConfigWindow();
-            },
-            onFeatureChanged(id, enabled) {
-                if (id !== 'github-commit-labels') return;
-                USER_CONFIG.labelsVisible = enabled;
-                GM_setValue('commitLabelsConfig', USER_CONFIG);
-                document.querySelectorAll('.commit-label').forEach(function (l) {
-                    l.style.display = enabled ? 'inline-flex' : 'none';
-                });
-            },
-        });
-        // Hub arrived (now or later): drop the standalone toggle button.
-        _hubHandle.onHubSeen(function () {
-            const existing = document.getElementById('commit-labels-buttons');
-            if (existing) existing.remove();
-        });
-    }
 })();

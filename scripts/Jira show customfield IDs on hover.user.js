@@ -5,7 +5,6 @@
 // @author       cam-barts
 // @match        https://*.atlassian.net/browse/*
 // @grant        none
-// @require      FireMonkey Hub Client
 // @updateURL    https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Jira%20show%20customfield%20IDs%20on%20hover.user.js
 // @downloadURL  https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Jira%20show%20customfield%20IDs%20on%20hover.user.js
 // ==/UserScript==
@@ -92,15 +91,5 @@
   .catch(err => {
     console.error("Jira customfield tooltip script error:", err);
   });
-
-  // Hub integration: declare via the shared client (no commands/features)
-  if (typeof window.FMHubClient !== 'undefined') {
-    window.FMHubClient.connect({
-      id: 'jira-customfield-ids',
-      description: 'Hover a field label on a Jira issue to see its customfield_xxx ID',
-      updateURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Jira%20show%20customfield%20IDs%20on%20hover.user.js',
-      downloadURL: 'https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Jira%20show%20customfield%20IDs%20on%20hover.user.js',
-    });
-  }
 
 })();

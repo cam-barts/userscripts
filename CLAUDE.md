@@ -8,10 +8,9 @@ This is a collection of **FireMonkey user scripts** (`.user.js`) and **user styl
 
 ### Key Characteristics
 
-- **No build process**: the committed `.user.js`/`.user.css` files are exactly what ships; `package.json` exists for dev-only tooling (lint/tests), nothing from it is distributed
+- **No build process**: the committed `.user.js`/`.user.css` files are exactly what ships
 - **Version-controlled distribution**: Raw GitHub URLs serve as auto-update sources for FireMonkey
-- **Hub architecture**: `FireMonkey Hub.user.js` (UI + storage + update checks, one script) plus `FireMonkey Hub Client.user.js` (shared protocol library, `@require`'d by every consumer script). Install order: Hub, then Client, then individual scripts
-- **Confluence Menu system**: base + extensions via `@require` (see Architecture)
+- **Standalone scripts**: each script works on its own. Manual actions are FireMonkey menu commands (`GM_registerMenuCommand`), and nothing sits on the page until a command invokes it
 
 ## FireMonkey Documentation
 
@@ -52,7 +51,6 @@ Every user script **must** include a metadata block at the top:
 **Important metadata fields:**
 - `@match`: URL patterns where the script runs (supports wildcards)
 - `@grant`: FireMonkey API permissions (`none`, `GM.getValue`, `GM_registerMenuCommand`, etc.)
-- `@require`: Dependencies on other scripts (used by Confluence Menu extensions)
 - `@updateURL` / `@downloadURL`: Must point to the **raw GitHub URL** with URL-encoded spaces (`%20`)
 
 ### Style Metadata Format
@@ -70,38 +68,7 @@ User styles use CSS comment syntax:
 ==/UserStyle== */
 ```
 
-## Architecture: FireMonkey Hub
-
-One granted script, `FireMonkey Hub.user.js`, owns the floating UI, GM storage (`fmhub.state.v1`, storage-as-truth via serialized read-modify-write), and GitHub update checks. Consumers talk to it only through `fmhub:*` CustomEvents with JSON-string details, via `FireMonkey Hub Client.user.js` (`@require`'d, exposes `FMHubClient.connect()`). The handshake is symmetric: the Hub broadcasts `fmhub:hubReady` at startup and answers any `fmhub:ping` with the same event, so injection order never matters. Versions come from `GM.info.script`; never hardcode a version string in a declare payload. The e2e suite (`npm run test:e2e`) encodes these invariants; keep it green.
-
-## Architecture: Confluence Menu System
-
-The Confluence scripts use a **base + extensions** architecture:
-
-1. **Base Script**: `Confluence Menu Base.user.js`
-   - Creates a global `window.FireMonkeyMenu` API
-   - Provides `registerCommand()` method for adding menu buttons
-   - Lazy-loads a floating menu UI on first command registration
-
-2. **Extension Scripts**: `Confluence Menu *.user.js`
-   - Include `@require Confluence Menu Base` in metadata
-   - Check for `window.FireMonkeyMenu` availability before proceeding
-   - Call `FireMonkeyMenu.registerCommand()` to add their functionality
-
-**When creating new Confluence scripts:**
-- Follow the extension pattern: check for base script availability
-- Use `FireMonkeyMenu.registerCommand({ enabled: true, name: '...', callback: fn })`
-- Include helpful error messages if base script is missing
-
-## Development Commands
-
-Dev tooling (run `npm install` once):
-
-- `npm run lint` - ESLint with `eslint-plugin-userscripts` (metadata-block validation) over `scripts/`
-- `npm run test` - Vitest: pure-function unit tests (metadata-stripping loader in `tests/load-userscript.js`) plus `@match`-pattern validation for every script AND style
-- `npm run test:e2e` - Playwright: hub-protocol tests that inject Hub + Client + consumers into fixture pages in deterministic order (both injection orders, fallback-UI teardown). Run these before pushing hub or consumer changes.
-
-The shipped scripts have no runtime dependency on any of this.
+## Development
 
 ### Testing Scripts
 
