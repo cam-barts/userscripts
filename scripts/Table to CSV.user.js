@@ -4,7 +4,7 @@
 // @description  Detect tables on any page, let the user select one, and download it as CSV
 // @author       cam-barts
 // @match        *://*/*
-// @grant        GM_registerMenuCommand
+// @grant        GM.registerMenuCommand
 // @updateURL    https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Table%20to%20CSV.user.js
 // @downloadURL  https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Table%20to%20CSV.user.js
 // ==/UserScript==
@@ -200,7 +200,7 @@
 		if (e.key === "Escape" && panelOpen) closePanel();
 	});
 
-	GM_registerMenuCommand("Export table to CSV", () => {
+	GM.registerMenuCommand("Export table to CSV", () => {
 		if (panelOpen) {
 			closePanel();
 			return;

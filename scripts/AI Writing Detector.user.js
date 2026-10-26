@@ -4,7 +4,7 @@
 // @description  Highlights signs of AI-generated writing based on Wikipedia's Signs of AI writing
 // @author       cam-barts
 // @match        *://*/*
-// @grant        GM_registerMenuCommand
+// @grant        GM.registerMenuCommand
 // @updateURL    https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/AI%20Writing%20Detector.user.js
 // @downloadURL  https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/AI%20Writing%20Detector.user.js
 // ==/UserScript==
@@ -505,5 +505,5 @@
 		summary.innerHTML = html;
 	}
 
-	GM_registerMenuCommand("AI: Toggle highlighting", toggleHighlighting);
+	GM.registerMenuCommand("AI: Toggle highlighting", toggleHighlighting);
 })();

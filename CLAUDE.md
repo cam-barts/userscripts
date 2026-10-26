@@ -10,7 +10,7 @@ This is a collection of **FireMonkey user scripts** (`.user.js`) and **user styl
 
 - **No build process**: the committed `.user.js`/`.user.css` files are exactly what ships
 - **Version-controlled distribution**: Raw GitHub URLs serve as auto-update sources for FireMonkey
-- **Standalone scripts**: each script works on its own. Manual actions are FireMonkey menu commands (`GM_registerMenuCommand`), and nothing sits on the page until a command invokes it
+- **Standalone scripts**: each script works on its own. Manual actions are FireMonkey menu commands (`GM.registerMenuCommand`), and nothing sits on the page until a command invokes it
 
 ## FireMonkey Documentation
 
@@ -50,7 +50,7 @@ Every user script **must** include a metadata block at the top:
 
 **Important metadata fields:**
 - `@match`: URL patterns where the script runs (supports wildcards)
-- `@grant`: FireMonkey API permissions (`none`, `GM.getValue`, `GM_registerMenuCommand`, etc.)
+- `@grant`: FireMonkey API permissions (`none`, `GM.getValue`, `GM.registerMenuCommand`, etc.)
 - `@updateURL` / `@downloadURL`: Must point to the **raw GitHub URL** with URL-encoded spaces (`%20`)
 
 ### Style Metadata Format
@@ -129,7 +129,7 @@ All scripts wrap code in immediately-invoked function expressions to avoid globa
 
 When using FireMonkey APIs, declare them in `@grant`:
 - `GM.getValue` / `GM.setValue` - Persistent storage
-- `GM_registerMenuCommand` - Add menu items to FireMonkey
+- `GM.registerMenuCommand` - Add menu items to FireMonkey
 - `none` - No special permissions needed
 
 ## Repository-Specific Guidelines

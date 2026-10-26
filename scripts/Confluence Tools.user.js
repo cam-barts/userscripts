@@ -4,7 +4,7 @@
 // @description  Word count, readability scores, and complex-sentence highlighting for Confluence pages, from the FireMonkey menu
 // @author       cam-barts
 // @match        https://*.atlassian.net/wiki/*
-// @grant        GM_registerMenuCommand
+// @grant        GM.registerMenuCommand
 // @updateURL    https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Tools.user.js
 // @downloadURL  https://raw.githubusercontent.com/cam-barts/userscripts/main/scripts/Confluence%20Tools.user.js
 // ==/UserScript==
@@ -433,7 +433,7 @@ Sentence Count: ${sentenceCount}
 		alert(`Word count: ${wordCount.toLocaleString()}`);
 	}
 
-	GM_registerMenuCommand("Confluence: Count words", countWords);
-	GM_registerMenuCommand("Confluence: Readability score", calculateReadability);
-	GM_registerMenuCommand("Confluence: Toggle sentence highlighting", toggleHighlighting);
+	GM.registerMenuCommand("Confluence: Count words", countWords);
+	GM.registerMenuCommand("Confluence: Readability score", calculateReadability);
+	GM.registerMenuCommand("Confluence: Toggle sentence highlighting", toggleHighlighting);
 })();
